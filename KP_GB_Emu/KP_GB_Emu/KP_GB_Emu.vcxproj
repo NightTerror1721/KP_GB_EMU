@@ -115,12 +115,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="basics.cpp" />
+    <ClCompile Include="cartridge.cpp" />
     <ClCompile Include="cpu.cpp" />
+    <ClCompile Include="kernel.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="mmu.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="baiscs.h" />
+    <ClInclude Include="basics.h" />
+    <ClInclude Include="cartridge.h" />
     <ClInclude Include="cpu.h" />
+    <ClInclude Include="kernel.h" />
+    <ClInclude Include="mmu.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

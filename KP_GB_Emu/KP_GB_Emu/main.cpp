@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "cpu.h"
+#include "kernel.h"
 
 
 
@@ -16,9 +16,15 @@ int main(int argc, char** argv) {
 
 	//regs.B = 1;
 	cpu.reg.C = 1;
+
+	//Memory m;
+
+	Kernel k;
+	const CPU* c = k.cpu;
+	
 	
 
-	std::cout << regs.BC << std::endl;
+	std::cout << sizeof(Memory) << std::endl;
 
 	std::system("pause");
 }

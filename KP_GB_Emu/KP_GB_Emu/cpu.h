@@ -1,15 +1,15 @@
 #pragma once
 
-#include "baiscs.h"
+#include "basics.h"
 
 typedef uint8 reg8;
 typedef uint16 reg16;
 
-#define bireg(reg0, reg1) union { \
-	reg16 reg0##reg1; \
+#define bireg(hi_reg, lo_reg) union { \
+	reg16 hi_reg##lo_reg; \
 	struct { \
-		reg8 reg0; \
-		reg8 reg1; \
+		reg8 lo_reg; \
+		reg8 hi_reg; \
 	}; \
 }
 
