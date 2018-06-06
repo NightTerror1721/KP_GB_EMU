@@ -54,7 +54,7 @@ Cartridge::~Cartridge()
 {
 }
 
-bool Cartridge::hasBattery()
+bool Cartridge::hasBattery() const
 {
 	switch(cartridgeType)
 	{

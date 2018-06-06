@@ -1,5 +1,8 @@
 #pragma once
 
+#include <list>
+#include <functional>
+
 #include "basics.h"
 #include "cpu.h"
 #include "mmu.h"
@@ -10,6 +13,8 @@ class Memory;
 
 class Kernel
 {
+private:
+	std::list<std::string> _errs;
 
 public:
 	const CPU* cpu;
@@ -19,5 +24,15 @@ public:
 
 	Kernel();
 	~Kernel();
+
+	
+	/* Error control */
+	void push_error(const std::string error);
+	void foreachError(void(*consumer)(std::string&)) const;
+
+	__forceinline bool hasErrors() const { return _errs.empty(); }
+	__forceinline void clearErrors() { _errs.clear(); }
+	__forceinline void cpush_error(const std::string error) const { const_cast<Kernel*>(this)->push_error(error); }
+	
 };
 

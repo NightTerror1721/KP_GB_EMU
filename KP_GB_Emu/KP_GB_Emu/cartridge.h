@@ -63,7 +63,7 @@ public:
 	Cartridge(RAW_DATA& rawRomData);
 	~Cartridge();
 
-	bool hasBattery();
+	bool hasBattery() const;
 
 	__forceinline std::string getGameTitle() const { return gameTitle; }
 

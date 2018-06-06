@@ -19,6 +19,8 @@ typedef unsigned long long	uint64;
 #define QWORD uint64
 #define FLAG bool
 #define RAW_VALUE char
+#define to_raw(ptr) (reinterpret_cast<RAW_VALUE*>(ptr))
+#define to_byte(ptr) (reinterpret_cast<BYTE*>(ptr))
 
 class RAW_DATA
 {
@@ -38,3 +40,9 @@ public:
 
 
 };
+
+template<typename T>
+__forceinline T max(T t0, T t1) { return t0 >= t1 ? t0 : t1; }
+
+template<typename T>
+__forceinline T min(T t0, T t1) { return t0 <= t1 ? t0 : t1; }
