@@ -4,8 +4,8 @@
 #include <functional>
 
 #include "basics.h"
-#include "cpu.h"
 #include "mmu.h"
+#include "cpu.h"
 #include "cartridge.h"
 
 class CPU;

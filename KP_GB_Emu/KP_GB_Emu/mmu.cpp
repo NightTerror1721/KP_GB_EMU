@@ -1,11 +1,12 @@
 #include "mmu.h"
 
+#include <iostream>
 #include <cstring>
 
-typedef DWORD ext_address;
+using ext_address = DWORD;
 
 
-Memory::Memory(const Kernel* core) : core(core)
+Memory::Memory(const Kernel* core) : core(core), hdma(__nullptr)
 {
 	this->wram = new BYTE[WRAM_PAGE_LEN * (core->cartridge->isColorGB() ? 8 : 2)];
 	this->vram = new BYTE[VRAM_PAGE_LEN * (core->cartridge->isColorGB() ? 2 : 1)];
@@ -86,12 +87,12 @@ BYTE Memory::getValue(address h_addr) const
 		case 0x1000:
 		case 0x2000:
 		case 0x3000:
-			return core->cartridge->romdata(addr);
+			return core->cartridge->cromdata(addr);
 		case 0x4000:
 		case 0x5000:
 		case 0x6000:
 		case 0x7000:
-			return core->cartridge->romdata(romPageStart + addr - 0x4000);
+			return core->cartridge->cromdata(romPageStart + addr - 0x4000);
 		case 0x8000:
 		case 0x9000:
 			return vram[vramPageStart + addr - 0x8000];
@@ -119,6 +120,15 @@ BYTE Memory::getValue(address h_addr) const
 	return 0xFF;
 }
 
+void Memory::setIO(address addr, BYTE value)
+{
+
+}
+BYTE Memory::getIO(address addr) const
+{
+	return 0;
+}
+
 
 
 
@@ -136,187 +146,213 @@ BYTE Memory::getValue(address h_addr) const
 
 
 /* Internal Classes */
-class MBC : protected Memory
+Memory::HDMA::HDMA(Memory* mem, const address source, const address dest, const uint32 length) : mem(mem), source(source), dest(dest), length(length) {}
+
+void Memory::HDMA::tick()
 {
-protected:
-	DWORD ramPageStart;
+	for (uint i = ptr; i < ptr + 0x10; i++)
+		mem->vram[mem->vramPageStart + dest + i] = mem->getValue(source + i);
 
-	FLAG ramEnabled;
-
-	BYTE* cartRam;
-	const DWORD cartRamSize;
-
-public:
-	MBC(const Kernel* core, DWORD cartRamSize) : Memory(core), ramPageStart(0), ramEnabled(false), cartRamSize(cartRamSize)
+	ptr += 0x10;
+	length -= 0x10;
+	std::cout << "Ticked HDMA from %04X-%04X, %02X remaining" << std::endl;
+	if (length == 0)
 	{
-		this->cartRam = new BYTE[cartRamSize];
+		mem->registers[50] = 0;
+		std::cout << "Finished HDMA from %04X-%04X" << std::endl;
+
+		mem->hdma = __nullptr;
+		delete this;
 	}
-	~MBC()
-	{
-		delete[] cartRam;
-	}
+	else mem->registers[0x55] = (length / 0x10 - 1);
+}
 
-	void save(std::ofstream& output) const
-	{
-		if (!hasBatery())
-		{
-			core->cpush_error("no battery");
-			return;
-		}
-		output.write(to_raw(cartRam), cartRamSize);
-	}
 
-	void load(std::ifstream& input)
+
+MBC::MBC(const Kernel* core, DWORD cartRamSize) : Memory(core), ramPageStart(0), ramEnabled(false), cartRamSize(cartRamSize)
+{
+	this->cartRam = new BYTE[cartRamSize];
+}
+MBC::~MBC()
+{
+	delete[] cartRam;
+}
+
+void MBC::save(std::ofstream& output) const
+{
+	if (!hasBatery())
 	{
-		if (!hasBatery())
-		{
-			core->cpush_error("no battery");
-			return;
-		}
+		core->cpush_error("no battery");
+		return;
+	}
+	output.write(to_raw(cartRam), cartRamSize);
+}
+
+void MBC::load(std::ifstream& input)
+{
+	if (!hasBatery())
+	{
+		core->cpush_error("no battery");
+		return;
+	}
 		
-		RAW_VALUE* raw = to_raw(cartRam);
-		if (input)
-		{
-			std::memset(raw, 0, cartRamSize);
-			input.read(raw, cartRamSize);
-			if (input.gcount() != cartRamSize)
-				core->cpush_error("cart data invalid");
-
-		}
-		else core->cpush_error("Premature end of input stream");
-	}
-
-	BYTE getValue(address h_addr) const
+	RAW_VALUE* raw = to_raw(cartRam);
+	if (input)
 	{
-		ext_address addr = h_addr;
-		switch (addr)
-		{
-			case 0xA000:
-			case 0xB000:
-				if (ramEnabled)
-					return cartRam[addr - 0xA000 + ramPageStart];
-				return 0xFF;
-		}
-		return Memory::getValue(h_addr);
+		std::memset(raw, 0, cartRamSize);
+		input.read(raw, cartRamSize);
+		if (input.gcount() != cartRamSize)
+			core->cpush_error("cart data invalid");
+
 	}
-};
+	else core->cpush_error("Premature end of input stream");
+}
 
-
-class MBC1 : MBC
+BYTE MBC::getValue(address h_addr) const
 {
-private:
-	FLAG modeSelect;
-
-	WORD romBank;
-
-	MBC1(const Kernel* core) : MBC(core, RAM_PAGE_LEN * 4) {}
-	~MBC1() = default;
-
-	void mapRom(WORD bank)
+	ext_address addr = h_addr;
+	switch (addr & 0xF000)
 	{
-		switch(bank) { case 0x00: case 0x20: case 0x40: case 0x60: bank++; }
-		romBank = bank;
-		romPageStart = ROM_PAGE_LEN * bank;
+		case 0xA000:
+		case 0xB000:
+			if (ramEnabled)
+				return cartRam[addr - 0xA000 + ramPageStart];
+			return 0xFF;
 	}
-
-	void setValue(address h_addr, BYTE value)
-	{
-		ext_address addr = h_addr;
-		switch (addr)
-		{
-			case 0x0000:
-			case 0x1000:
-				if (core->cartridge->getRamBanks() > 0)
-					ramEnabled = (value & 0x0F) == 0x0A;
-				break;
-			case 0xA000:
-			case 0xB000:
-				if (ramEnabled)
-					cartRam[addr - 0xA000 + ramPageStart] = value;
-				break;
-			case 0x2000:
-			case 0x3000:
-				mapRom((romBank & 0x60) | (value & 0x1F));
-				break;
-			case 0x4000:
-			case 0x5000:
-				if (!modeSelect)
-					ramPageStart = (value & 0x03) * RAM_PAGE_LEN;
-				else mapRom((romBank & 0x1F) | ((value & 0x03) << 4));
-				break;
-			case 0x6000:
-			case 0x7000:
-				if (core->cartridge->getRamBanks() == 3)
-					modeSelect = (value & 0x01);
-				break;
-			default:
-				MBC::setValue(h_addr, value);
-				break;
-		}
-	}
-};
+	return Memory::getValue(h_addr);
+}
 
 
-class MBC2 : MBC
+MBC1::MBC1(const Kernel* core) : MBC(core, RAM_PAGE_LEN * 4) {}
+
+void MBC1::mapRom(bankid bank)
 {
-	MBC2(const Kernel* core) : MBC(core, 1)
-	{
-		core->cpush_error("unsupported cartridge");
-	}
-	~MBC2() = default;
-};
+	switch(bank) { case 0x00: case 0x20: case 0x40: case 0x60: bank++; }
+	romBank = bank;
+	romPageStart = ROM_PAGE_LEN * bank;
+}
 
-
-class MBC3 : MBC
+void MBC1::setValue(address h_addr, BYTE value)
 {
-private:
-	int16 ramBank;
-
-	FLAG rtcEnabled;
-
-	BYTE rtc[4];
-
-public:
-	MBC3(const Kernel* core) : MBC(core, RAM_PAGE_LEN * 4) {}
-	~MBC3() = default;
-
-	void setValue(address h_addr, BYTE value)
+	ext_address addr = h_addr;
+	switch (addr & 0xF000)
 	{
-		ext_address addr = h_addr;
-		switch (addr)
-		{
-			case 0x0000:
-			case 0x1000:
-				if (core->cartridge->getRamBanks() != 0)
-					ramEnabled = (value & 0x0F) == 0x0A;
-				rtcEnabled = (value & 0x0F) == 0x0A;
-				break;
-			case 0x2000:
-			case 0x3000:
-				romPageStart = ROM_PAGE_LEN * max((value & 0x7F), 1);
-				break;
-			case 0x4000:
-			case 0x5000:
-				if (value >= 0x08 && value <= 0x0C)
-				{
-					if (rtcEnabled)
-						ramBank = -1;
-				}
-				else if (value <= 0x03)
-				{
-					ramBank = value;
-					ramPageStart = ramBank * RAM_PAGE_LEN;
-				}
-				break;
-			case 0xA000:
-			case 0xB000:
-				// FIXME this is probably incorrect
-				rtc[ramBank - 0x08] = value;
-				break;
-			default:
-				MBC::setValue(h_addr, value);
-				break;
-		}
+		case 0x0000:
+		case 0x1000:
+			if (core->cartridge->getRamBanks() > 0)
+				ramEnabled = (value & 0x0F) == 0x0A;
+			break;
+		case 0xA000:
+		case 0xB000:
+			if (ramEnabled)
+				cartRam[addr - 0xA000 + ramPageStart] = value;
+			break;
+		case 0x2000:
+		case 0x3000:
+			mapRom((romBank & 0x60) | (value & 0x1F));
+			break;
+		case 0x4000:
+		case 0x5000:
+			if (!modeSelect)
+				ramPageStart = (value & 0x03) * RAM_PAGE_LEN;
+			else mapRom((romBank & 0x1F) | ((value & 0x03) << 4));
+			break;
+		case 0x6000:
+		case 0x7000:
+			if (core->cartridge->getRamBanks() == 3)
+				modeSelect = (value & 0x01);
+			break;
+		default:
+			MBC::setValue(h_addr, value);
+			break;
 	}
-};
+}
+
+
+MBC2::MBC2(const Kernel* core) : MBC(core, 1)
+{
+	core->cpush_error("unsupported cartridge");
+}
+
+
+MBC3::MBC3(const Kernel* core) : MBC(core, RAM_PAGE_LEN * 4) {}
+
+void MBC3::setValue(address h_addr, BYTE value)
+{
+	ext_address addr = h_addr;
+	switch (addr & 0xF000)
+	{
+		case 0x0000:
+		case 0x1000:
+			if (core->cartridge->getRamBanks() != 0)
+				ramEnabled = (value & 0x0F) == 0x0A;
+			rtcEnabled = (value & 0x0F) == 0x0A;
+			break;
+		case 0x2000:
+		case 0x3000:
+			romPageStart = ROM_PAGE_LEN * max((value & 0x7F), 1);
+			break;
+		case 0x4000:
+		case 0x5000:
+			if (value >= 0x08 && value <= 0x0C)
+			{
+				if (rtcEnabled)
+					ramBank = -1;
+			}
+			else if (value <= 0x03)
+			{
+				ramBank = value;
+				ramPageStart = ramBank * RAM_PAGE_LEN;
+			}
+			break;
+		case 0xA000:
+		case 0xB000:
+			// FIXME this is probably incorrect
+			rtc[ramBank - 0x08] = value;
+			break;
+		default:
+			MBC::setValue(h_addr, value);
+			break;
+	}
+}
+
+
+MBC5::MBC5(const Kernel* core) : MBC(core, RAM_PAGE_LEN * 16), romBank(1) {}
+
+void MBC5::mapRom(bankid bank)
+{
+	romBank = bank;
+	romPageStart = ROM_PAGE_LEN * bank;
+}
+
+void MBC5::setValue(address h_addr, BYTE value)
+{
+	ext_address addr = h_addr;
+	switch (addr & 0xF000)
+	{
+		case 0x0000:
+		case 0x1000:
+			if (core->cartridge->getRamBanks() > 0)
+				ramEnabled = (value & 0x0F) == 0x0A;
+			break;
+		case 0xA000:
+		case 0xB000:
+			if (ramEnabled)
+				cartRam[addr - 0xA000 + ramPageStart] = value;
+			break;
+		case 0x2000:
+			mapRom((romBank & 0x100) | (value & 0xff));
+			break;
+		case 0x3000:
+			mapRom((romBank & 0xff) | ((value & 0x1) << 8));
+			break;
+		case 0x4000:
+		case 0x5000:
+			ramPageStart = (value & 0x03) * RAM_PAGE_LEN;
+			break;
+		default:
+			MBC::setValue(h_addr, value);
+			break;
+	}
+}
 

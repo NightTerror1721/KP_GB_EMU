@@ -9,7 +9,7 @@
 int main(int argc, char** argv) {
 	std::cout << "Hello world" << std::endl;
 
-	CPU cpu;
+	/*CPU cpu;
 	std::cout << sizeof(CPU) << std::endl;
 
 	std::memset(&cpu, 0, sizeof(CPU));
@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
 	//Memory m;
 
 	Kernel k;
-	const CPU* c = k.cpu;
+	const CPU* c = k.cpu;*/
 	
 	
 

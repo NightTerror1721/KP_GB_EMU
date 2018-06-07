@@ -77,7 +77,8 @@ public:
 	__forceinline uint16 getRomBanks() const { return romBanks; }
 	__forceinline uint16 getRamBanks() const { return ramBanks; }
 
-	__forceinline BYTE romdata(DWORD addr) const { return (BYTE) rawRom[addr]; }
+	__forceinline BYTE romdata(DWORD addr) { return static_cast<BYTE>(rawRom[addr]); }
+	__forceinline BYTE cromdata(DWORD addr) const { return static_cast<BYTE>(const_cast<RAW_DATA&>(rawRom)[addr]); }
 
 
 };

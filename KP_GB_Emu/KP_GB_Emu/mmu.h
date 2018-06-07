@@ -12,7 +12,7 @@ class Kernel;
 #define WRAM_PAGE_LEN 0x2000
 #define RAM_PAGE_LEN WRAM_PAGE_LEN
 
-typedef WORD address;
+using address = WORD;
 
 enum RegisterId : BYTE
 {
@@ -66,6 +66,10 @@ class Memory
 protected:
 	const Kernel* core;
 
+private:
+	class HDMA;
+	HDMA * hdma;
+
 public:
 	BYTE registers[0x0100];
 	BYTE oam[0x00A0];
@@ -94,5 +98,110 @@ public:
 	BYTE getIO(address addr) const;
 
 	__forceinline BYTE reg(RegisterId regId) const { return registers[regId]; }
+
+	__forceinline FLAG hasHdma() { return hdma != __nullptr; }
+	__forceinline void hdmaTick() { if(hdma) hdma->tick(); }
+
+private:
+	class HDMA
+	{
+	private:
+		Memory* mem;
+
+		const address source;
+		const address dest;
+
+		uint32 length;
+		uint32 ptr;
+
+		HDMA(Memory* mem, const address source, const address dest, const uint32 length);
+
+	public:
+		~HDMA() = default;
+
+		/**
+		* Ticks DMA.
+		*/
+		void tick();
+	};
 };
+
+
+namespace
+{
+	using bankid = DWORD;
+
+	class MBC : protected Memory
+	{
+	protected:
+		DWORD ramPageStart;
+
+		FLAG ramEnabled;
+
+		BYTE* cartRam;
+		const DWORD cartRamSize;
+
+	public:
+		MBC(const Kernel* core, DWORD cartRamSize);
+		~MBC();
+
+		void save(std::ofstream& output) const;
+		void load(std::ifstream& input);
+
+		BYTE getValue(address h_addr) const;
+	};
+
+	class MBC1 : MBC
+	{
+	private:
+		FLAG modeSelect;
+
+		bankid romBank;
+
+		void mapRom(bankid bank);
+
+	public:
+		MBC1(const Kernel* core);
+		~MBC1() = default;
+
+		void setValue(address h_addr, BYTE value);
+	};
+
+	class MBC2 : MBC
+	{
+	public:
+		MBC2(const Kernel* core);
+		~MBC2() = default;
+	};
+
+	class MBC3 : MBC
+	{
+	private:
+		int16 ramBank;
+
+		FLAG rtcEnabled;
+
+		BYTE rtc[4];
+
+	public:
+		MBC3(const Kernel* core);
+		~MBC3() = default;
+
+		void setValue(address h_addr, BYTE value);
+	};
+
+	class MBC5 : MBC
+	{
+	private:
+		bankid romBank;
+
+		void mapRom(bankid bank);
+
+	public:
+		MBC5(const Kernel* core);
+		~MBC5() = default;
+
+		void setValue(address h_addr, BYTE value);
+	};
+}
 
