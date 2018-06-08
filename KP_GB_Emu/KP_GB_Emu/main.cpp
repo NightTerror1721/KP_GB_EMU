@@ -2,6 +2,9 @@
 #include <cstdint>
 #include <cstring>
 
+#include <GL/glut.h>
+
+
 #include "kernel.h"
 
 
