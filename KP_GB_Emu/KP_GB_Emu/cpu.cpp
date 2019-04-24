@@ -1,538 +1,553 @@
 #include "cpu.h"
 
-#define __mem core->mem
-#define __cmem const_cast<Memory*>(__mem)
+void invalid_opcode(MMU* const& mmu, CPU* const& cpu) {}
 
-CPU::CPU(const Kernel* core) : core(core) {
+
+Opcode::Opcode(const std::string& name, uint8_t length, opfunc_w func) :
+	_name(name),
+	_length(length),
+	_func(static_cast<opfunc>(func))
+{}
+
+Opcode::Opcode(const std::string& name, uint8_t length, opfunc_b func) :
+	_name(name),
+	_length(length),
+	_func(static_cast<opfunc>(func))
+{}
+
+Opcode::Opcode(const std::string& name, uint8_t length, opfunc_v func) :
+	_name(name),
+	_length(length),
+	_func(static_cast<opfunc>(func))
+{}
+
+Opcode::Opcode() :
+	_name("<unknown_opcode>"),
+	_length(0),
+	_func(static_cast<opfunc>(invalid_opcode))
+{}
+
+
+std::string Opcode::name() const { return _name; }
+uint8_t Opcode::length() const { return _length; }
+
+void Opcode::operator() (MMU* const& mmu, CPU* const& cpu) const
+{
+	if (!_length)
+		static_cast<opfunc_v>(_func)(mmu, cpu);
+}
+
+void Opcode::operator() (MMU* const& mmu, CPU* const& cpu, const byte_t& operand) const
+{
+	if (_length == 1)
+		static_cast<opfunc_b>(_func)(mmu, cpu, operand);
+}
+
+void Opcode::operator() (MMU* const& mmu, CPU* const& cpu, const word_t& operand) const
+{
+	if (_length == 2)
+		static_cast<opfunc_w>(_func)(mmu, cpu, operand);
+}
+
+void Opcode::undefined()
+{
 
 }
 
-CPU::~CPU() {}
 
+CPU::CPU() :
+	regs(),
+	ints(),
+	ticks(0),
+	_stopped(false)
+{}
 
-void CPU::setByte(reg16 addr, BYTE value) { tick(4); const_cast<Memory*>(core->mem)->setValue(addr, value); }
-BYTE CPU::getByte(reg16 addr) { tick(4); return core->mem->getValue(addr); }
-
-void CPU::setIO(reg16 addr, BYTE value) { tick(4); const_cast<Memory*>(core->mem)->setIO(addr, value); }
-BYTE CPU::getIO(reg16 addr) { tick(4); return core->mem->getIO(addr); }
-
-void CPU::setInterruptTriggered(TItMask mask) { const_cast<Memory*>(core->mem)->registers[R_TRIGGERED_INTERRUPTS] |= mask; }
-FLAG CPU::isInterruptTriggered(TItMask mask) const { return (core->mem->registers[R_TRIGGERED_INTERRUPTS] & core->mem->registers[R_ENABLED_INTERRUPTS] & mask); }
-
-
-FLAG CPU::getConditionalFlag(BYTE which)
+void CPU::step(MMU* const& mmu)
 {
-	switch (which & 0x7)
+
+}
+
+void CPU::reset()
+{
+
+}
+
+void CPU::stop() { _stopped = true; }
+bool CPU::isStopped() { return _stopped; }
+
+
+
+
+
+
+
+
+
+/* opcode functions */
+#define BYTE byte_t
+#define WORD word_t
+#define __CPU cpu
+#define __MMU mmu
+#define __REG __CPU->regs
+#define __INT __CPU->ints
+#define __ARGS mmu, cpu
+#define BASE_ARGS MMU* const& __MMU, CPU* const& __CPU
+#define BYTE_ARG const BYTE&
+#define WORD_ARG const WORD&
+
+#define A __REG.A
+#define B __REG.B
+#define C __REG.C
+#define D __REG.D
+#define E __REG.E
+#define F __REG.F
+#define H __REG.H
+#define L __REG.L
+#define AF __REG.AF
+#define BC __REG.BC
+#define DE __REG.DE
+#define HL __REG.HL
+#define SP __REG.SP
+#define PC __REG.PC
+
+#define WriteByte(offset, value) __MMU->writeByte((offset), (value))
+#define WriteWord(offset, value) __MMU->writeWord((offset), (value))
+#define ReadByte(offset) __MMU->readByte((offset))
+#define ReadWord(offset) __MMU->readWord((offset))
+
+#define ZERO_FLAG __REG.ZeroFlag
+#define SUBTRACT_FLAG __REG.SubtractFlag
+#define HALFCARRY_FLAG __REG.HalfCarryFlag
+#define CARRY_FLAG __REG.CarryFlag
+
+#define SET_FLAG(flag) (flag) = ENABLED_FLAG
+#define CLEAR_FLAG(flag) (flag) = DISABLED_FLAG
+
+#define SET_IF_ELSE_CLEAR(flag, if_statement) if(if_statement) SET_FLAG(flag); else CLEAR_FLAG(flag)
+#define CLEAR_IF_ELSE_SET(flag, if_statement) if(if_statement) CLEAR_FLAG(flag); else SET_FLAG(flag)
+
+
+BYTE __inc(BASE_ARGS, BYTE value)
+{
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (value & 0x0F) == 0x0F);
+
+	value++;
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, (value + 1));
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	return value;
+}
+#define INC(value) __inc(__ARGS, (value))
+
+BYTE __dec(BASE_ARGS, BYTE value)
+{
+	CLEAR_IF_ELSE_SET(HALFCARRY_FLAG, (value & 0x0F) == 0x0F);
+
+	value--;
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, (value + 1));
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	return value;
+}
+#define DEC(value) __dec(__ARGS, (value))
+
+void __add(BASE_ARGS, BYTE& dest, BYTE_ARG value)
+{
+	unsigned int result = dest + value;
+
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, result & 0xFF00);
+
+	dest = static_cast<BYTE>(result & 0xFF);
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, dest);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, ((dest & 0x0F) + (value & 0x0F)) > 0x0F);
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+}
+#define ADD(dest, value) __add(__ARGS, (dest), (value))
+
+void __addw(BASE_ARGS, WORD& dest, WORD_ARG value)
+{
+	unsigned int result = dest + value;
+
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, result & 0xFFFF0000);
+
+	dest = static_cast<BYTE>(result & 0xFFFF);
+	//CLEAR_IF_ELSE_SET(ZERO_FLAG, dest); zero flag left alone
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, ((dest & 0x0F) + (value & 0x0F)) > 0x0F);
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+}
+#define ADDW(dest, value) __addw(__ARGS, (dest), (value))
+
+void __adc(BASE_ARGS, BYTE value)
+{
+	value += CARRY_FLAG ? 1 : 0;
+
+	int result = A + value;
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, result & 0xFF00);
+	SET_IF_ELSE_CLEAR(ZERO_FLAG, value == A);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, ((value & 0x0F) + (A & 0x0F)) > 0x0F);
+
+	SET_FLAG(SUBTRACT_FLAG);
+	A = static_cast<BYTE>(result & 0xFF);
+}
+#define ADC(value) __adc(__ARGS, (value))
+
+void __sbc(BASE_ARGS, BYTE value)
+{
+	value += CARRY_FLAG ? 1 : 0;
+
+	SET_FLAG(SUBTRACT_FLAG);
+
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, value > A);
+	SET_IF_ELSE_CLEAR(ZERO_FLAG, value == A);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (value & 0x0F) > (A & 0x0F));
+
+	A -= value;
+}
+#define SBC(value) __sbc(__ARGS, (value))
+
+void __sub(BASE_ARGS, BYTE_ARG value)
+{
+	SET_FLAG(SUBTRACT_FLAG);
+
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, value > A);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (value & 0x0F) > (A & 0x0F));
+
+	A -= value;
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+}
+#define SUB(value) __sub(__ARGS, (value))
+
+void __and(BASE_ARGS, BYTE_ARG value)
+{
+	A &= value;
+
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+
+	CLEAR_FLAG(CARRY_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	SET_FLAG(HALFCARRY_FLAG);
+}
+#define AND(value) __and(__ARGS, (value))
+
+void __or(BASE_ARGS, BYTE_ARG value)
+{
+	A |= value;
+
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+
+	CLEAR_FLAG(CARRY_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+#define OR(value) __or(__ARGS, (value))
+
+void __xor(BASE_ARGS, BYTE_ARG value)
+{
+	A ^= value;
+
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+
+	CLEAR_FLAG(CARRY_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+#define XOR(value) __xor(__ARGS, (value))
+
+void __cp(BASE_ARGS, BYTE_ARG value)
+{
+	SET_IF_ELSE_CLEAR(ZERO_FLAG, A == value);
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, value > A);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (value & 0xF) > (A & 0xF));
+
+	SET_FLAG(SUBTRACT_FLAG);
+}
+#define CP(value) __cp(__ARGS, (value))
+
+
+
+
+
+
+
+#define OPERAND operand
+#define opfuncv(name) void name(BASE_ARGS)
+#define opfuncb(name) void name(BASE_ARGS, BYTE_ARG OPERAND)
+#define opfuncw(name) void name(BASE_ARGS, WORD_ARG OPERAND)
+
+#define SIGNED_BYTE(value) static_cast<int8_t>(value)
+#define SIGNED_WORD(value) static_cast<int16_t>(value)
+
+#define TICKS __CPU->ticks
+
+opfuncv(nop) {}
+opfuncw(ld_bc_nn) { BC = OPERAND; }
+opfuncv(ld_bcp_a) { WriteByte(BC, A); }
+opfuncv(inc_bc) { BC++; }
+opfuncv(inc_b) { B = INC(B); }
+opfuncv(dec_b) { B = DEC(B); }
+opfuncb(ld_b_n) { B = OPERAND; }
+opfuncv(rlca) {
+	BYTE carry = (A & 0x80) >> 7;
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, carry);
+
+	A <<= 1;
+	A += carry;
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+opfuncw(ld_nnp_sp) { WriteWord(OPERAND, SP); }
+opfuncv(add_hl_bc) { ADDW(HL, BC); }
+opfuncv(ld_a_bcp) { A = ReadByte(BC); }
+opfuncv(dec_bc) { BC--; }
+opfuncv(inc_c) { C = INC(C); }
+opfuncv(dec_c) { C = DEC(C); }
+opfuncb(ld_c_n) { C = OPERAND; }
+opfuncv(rrca) {
+	BYTE carry = A & 0x01;
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, carry);
+
+	A >>= 1;
+	if (carry)
+		A |= 0x80;
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+opfuncb(stop) { __CPU->stop(); }
+opfuncw(ld_de_nn) { DE = OPERAND; }
+opfuncv(ld_dep_a) { WriteByte(DE, A); }
+opfuncv(inc_de) { DE++; }
+opfuncv(inc_d) { D = INC(D); }
+opfuncv(dec_d) { D = DEC(D); }
+opfuncb(ld_d_n) { D = OPERAND; }
+opfuncv(rla) {
+	int carry = CARRY_FLAG ? 1 : 0;
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, A & 0x80);
+
+	A <<= 1;
+	A += carry;
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+opfuncb(jr_n) { PC += SIGNED_BYTE(OPERAND); }
+opfuncv(add_hl_de) { ADDW(HL, DE); }
+opfuncv(ld_a_dep) { A = ReadByte(DE); }
+opfuncv(dec_de) { DE--; }
+opfuncv(inc_e) { E = INC(E); }
+opfuncv(dec_e) { E = DEC(E); }
+opfuncb(ld_e_n) { E = OPERAND; }
+opfuncv(rra) {
+	int carry = (CARRY_FLAG ? 1 : 0) << 7;
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, A & 0x01);
+
+	A >>= 1;
+	A += carry;
+
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+opfuncb(jr_nz_n) {
+	if (ZERO_FLAG)
+		TICKS += 8;
+	else
 	{
-		case 0b100: return !(F & F_Z);
-		case 0b101: return (F & F_Z);
-		case 0b110: return !(F & F_C);
-		case 0b111: return (F & F_C);
-	}
-	return false;
-}
-
-reg8 CPU::getRegister(BYTE reg)
-{
-	switch (reg & 0b111)
-	{
-		case 0b111: return A;
-		case 0b000: return B;
-		case 0b001: return C;
-		case 0b010: return D;
-		case 0b011: return E;
-		case 0b100: return H;
-		case 0b101: return L;
-		case 0b110: return getByte((H << 8) | L);
-	}
-	return 0;
-}
-
-void CPU::setRegister(BYTE reg, reg8 value)
-{
-	switch (reg & 0b111)
-	{
-		case 0b111: A = value; break;
-		case 0b000: B = value; break;
-		case 0b001: C = value; break;
-		case 0b010: D = value; break;
-		case 0b011: E = value; break;
-		case 0b100: H = value; break;
-		case 0b101: L = value; break;
-		case 0b110: setByte((H << 8) | L, value); break;
-	}
-}
-
-void CPU::fireInterrupts()
-{
-	if (!isInterruptEnabled())
-		return;
-
-	BYTE triggeredInterrupts = __mem->registers[R_TRIGGERED_INTERRUPTS];
-	BYTE enabledInterrupts = __mem->registers[R_ENABLED_INTERRUPTS];
-
-	if ((triggeredInterrupts & enabledInterrupts) != 0)
-	{
-		pushWord(PC);
-		setInterruptEnabled(false);
-
-		if (isInterruptTriggered(VBLANK_BIT))
-		{
-			PC = VBLANK_HANDLER_ADDRESS;
-			triggeredInterrupts &= ~VBLANK_BIT;
-		}
-		else if (isInterruptTriggered(LCDC_BIT))
-		{
-			PC = LCDC_HANDLER_ADDRESS;
-			triggeredInterrupts &= ~LCDC_BIT;
-		}
-		else if (isInterruptTriggered(TIMER_OVERFLOW_BIT))
-		{
-			PC = TIMER_OVERFLOW_HANDLER_ADDRESS;
-			triggeredInterrupts &= ~TIMER_OVERFLOW_BIT;
-		}
-		else if (isInterruptTriggered(SERIAL_TRANSFER_BIT))
-		{
-			PC = SERIAL_TRANSFER_HANDLER_ADDRESS;
-			triggeredInterrupts &= ~SERIAL_TRANSFER_BIT;
-		}
-		else if (isInterruptTriggered(HILO_BIT))
-		{
-			PC = HILO_HANDLER_ADDRESS;
-			triggeredInterrupts &= ~HILO_BIT;
-		}
-		__cmem->registers[R_TRIGGERED_INTERRUPTS] = triggeredInterrupts;
-	}
-}
-
-void CPU::updateInterrupts(cycle_t delta)
-{
-	if (isDoubleSpeedEnabled())
-		delta /= 2;
-
-	divCycle += delta;
-	if (divCycle >= 256)
-	{
-		divCycle -= 256;
-		__cmem->registers[R_DIV]++;
-	}
-
-	BYTE tac = __mem->registers[R_TAC];
-	if ((tac & 0b100))
-	{
-		timerCycle += delta;
-
-		cycle_t timerPeriod = 0;
-		switch (tac & 0b11)
-		{
-			case 0b00: timerPeriod = clockSpeed / 4096;
-			case 0b01: timerPeriod = clockSpeed / 262144;
-			case 0b10: timerPeriod = clockSpeed / 65536;
-			case 0b11: timerPeriod = clockSpeed / 16384;
-		}
-
-		while (timerCycle >= timerPeriod)
-		{
-			timerCycle -= timerPeriod;
-
-			WORD tima = (__mem->registers[R_TIMA] & 0xff) + 1;
-			if (tima > 0xff)
-			{
-				tima = __mem->registers[R_TIMA] & 0xff;
-				setInterruptTriggered(TIMER_OVERFLOW_BIT);
-			}
-			__cmem->registers[R_TIMA] = static_cast<BYTE>(tima);
-		}
-	}
-
-	/* TODO */
-	//core->sound->tick();
-	//core->lcd->tick();
-}
-
-reg16 CPU::getRegisterPair(BYTE value)
-{
-	switch (value)
-	{
-		case 0: return BC;
-		case 1: return DE;
-		case 2: return HL;
-		case 3: return SP;
-	}
-	return 0xff;
-}
-
-void CPU::tick(cycle_t delta)
-{
-	cycle += delta;
-	cyclesSinceLastSleep += delta;
-	cyclesExecutedThisSecond += delta;
-
-	updateInterrupts(delta);
-}
-
-void CPU::execute()
-{
-
-}
-
-
-/* OPCODE Functions */
-void CPU::ADC_n()
-{
-	int val = nextByte();
-	int carry = ((F & F_C) != 0 ? 1 : 0);
-	int n = val + carry;
-
-	F = 0;
-	if ((((A & 0xf) + (val & 0xf)) + carry & 0xF0) != 0)
-		F |= F_H;
-	A += n;
-	if (A > 0xFF)
-	{
-		F |= F_C;
-		A &= 0xFF;
-	}
-	if (A == 0)
-		F |= F_Z;
-}
-
-void CPU::ADC_r(opcode_t op)
-{
-	int carry = ((F & F_C) != 0 ? 1 : 0);
-	int reg = (getRegister(op & 0b111) & 0xff);
-
-	int d = carry + reg;
-	F = 0;
-	if ((((A & 0xf) + (reg & 0xf) + carry) & 0xF0) != 0) F |= F_H;
-
-	A += d;
-	if (A > 0xFF)
-	{
-		F |= F_C;
-		A &= 0xFF;
-	}
-	if (A == 0) F |= F_Z;
-}
-
-void CPU::ADD(BYTE n)
-{
-	F = 0;
-	if ((((A & 0xf) + (n & 0xf)) & 0xF0) != 0) F |= F_H;
-	A += n;
-	if (A > 0xFF)
-	{
-		F |= F_C;
-		A &= 0xFF;
-	}
-	if (A == 0) F |= F_Z;
-}
-
-void CPU::ADD_HL_rr(opcode_t op)
-{
-	int ss = getRegisterPair((op >> 4) & 0x3);
-	int hl = HL;
-
-	F &= F_Z;
-
-	if (((hl & 0xFFF) + (ss & 0xFFF)) > 0xFFF)
-	{
-		F |= F_H;
-	}
-
-	hl += ss;
-
-	if (hl > 0xFFFF)
-	{
-		F |= F_C;
-		hl &= 0xFFFF;
-	}
-
-	HL = hl;
-}
-
-cycle_t CPU::ADD_SP_n()
-{
-	int offset = nextByte();
-	int nsp = (SP + offset);
-
-	F = 0;
-	int carry = nsp ^ SP ^ offset;
-	if ((carry & 0x100) != 0) F |= F_C;
-	if ((carry & 0x10) != 0) F |= F_H;
-
-	nsp &= 0xffff;
-
-	SP = nsp;
-	return 4;
-}
-
-void CPU::ADD_n()
-{
-	ADD(nextByte());
-}
-
-void CPU::ADD_r(opcode_t op)
-{
-	ADD(getRegister(op & 0b111) & 0xff);
-}
-
-void CPU::AND_n()
-{
-	A &= nextByte();
-	F = F_H;
-	if (A == 0) F |= F_Z;
-}
-
-void CPU::AND_r(opcode_t op)
-{
-	A = (A & getRegister(op & 0b111)) & 0xff;
-	F = F_H;
-	if (A == 0) F |= F_Z;
-}
-
-cycle_t CPU::CALL_cc_nn(opcode_t op)
-{
-	int jmp = (nextByte()) | (nextByte() << 8);
-	if (getConditionalFlag(0b100 | ((op >> 3) & 0x7)))
-	{
-		pushWord(PC);
-		PC = jmp;
-		return 4;
-	}
-	return 0;
-}
-
-cycle_t CPU::CALL_nn()
-{
-	int jmp = (nextByte()) | (nextByte() << 8);
-	pushWord(PC);
-	PC = jmp;
-	return 4;
-}
-
-void CPU::CBPrefix()
-{
-	int x = PC++;
-
-	int cbop = getByte(x);
-	int r = cbop & 0x7;
-	int d = getRegister(r) & 0xff;
-
-	switch ((cbop & 0b11000000))
-	{
-		case 0x80:
-		{
-			// RES b, r
-			// 1 0 b b b r r r
-			setRegister(r, d & ~(0x1 << (cbop >> 3 & 0x7)));
-			return;
-		}
-		case 0xc0:
-		{
-			// SET b, r
-			// 1 1 b b b r r r
-			setRegister(r, d | (0x1 << (cbop >> 3 & 0x7)));
-			return;
-		}
-		case 0x40:
-		{
-			// BIT b, r
-			// 0 1 b b b r r r
-			F &= F_C;
-			F |= F_H;
-			if ((d & (0x1 << (cbop >> 3 & 0x7))) == 0) F |= F_Z;
-			return;
-		}
-		case 0x0:
-		{
-			switch (cbop & 0xf8)
-			{
-				case 0x00: // RLC m
-				{
-					F = 0;
-					if ((d & 0x80) != 0) F |= F_C;
-					d <<= 1;
-
-					// we're shifting circular left, add back bit 7
-					if ((F & F_C) != 0) d |= 0x01;
-					d &= 0xff;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x08: // RRC m
-				{
-					F = 0;
-					if ((d & 0b1) != 0) F |= F_C;
-					d >>= 1;
-
-					// we're shifting circular right, add back bit 7
-					if ((F & F_C) != 0) d |= 0x80;
-					d &= 0xff;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x10: // RL m
-				{
-					bool carryflag = (F & F_C) != 0;
-					F = 0;
-
-					// we'll be shifting left, so if bit 7 is set we set carry
-					if ((d & 0x80) == 0x80) F |= F_C;
-					d <<= 1;
-					d &= 0xff;
-
-					// move old C into bit 0
-					if (carryflag) d |= 0b1;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x18: // RR m
-				{
-					bool carryflag = (F & F_C) != 0;
-					F = 0;
-
-					// we'll be shifting right, so if bit 1 is set we set carry
-					if ((d & 0x1) == 0x1) F |= F_C;
-					d >>= 1;
-
-					// move old C into bit 7
-					if (carryflag) d |= 0b10000000;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x38: // SRL m
-				{
-					F = 0;
-
-					// we'll be shifting right, so if bit 1 is set we set carry
-					if ((d & 0x1) != 0) F |= F_C;
-					d >>= 1;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x20: // SLA m
-				{
-					F = 0;
-
-					// we'll be shifting right, so if bit 1 is set we set carry
-					if ((d & 0x80) != 0) F |= F_C;
-					d <<= 1;
-					d &= 0xff;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x28: // SRA m
-				{
-					bool bit7 = (d & 0x80) != 0;
-					F = 0;
-					if ((d & 0b1) != 0) F |= F_C;
-					d >>= 1;
-					if (bit7) d |= 0x80;
-					if (d == 0) F |= F_Z;
-					setRegister(r, d);
-					return;
-				}
-				case 0x30: // SWAP m
-				{
-					d = ((d & 0xF0) >> 4) | ((d & 0x0F) << 4);
-					F = d == 0 ? F_Z : 0;
-					setRegister(r, d);
-					return;
-				}
-				default:
-					core->cpush_error("cb-&f8-" + cbop);
-					return;
-			}
-		}
-		default:
-			core->cpush_error("cb-" + cbop);
-			return;
+		PC += SIGNED_BYTE(OPERAND);
+		TICKS += 12;
 	}
 }
+opfuncw(ld_hl_nn) { HL = OPERAND; }
+opfuncv(ldi_hlp_a) { WriteByte(HL++, A); }
+opfuncv(inc_hl) { HL++; }
+opfuncv(inc_h) { H = INC(H); }
+opfuncv(dec_h) { H = DEC(H); }
+opfuncb(ld_h_n) { H = OPERAND; }
+opfuncv(daa) {
+	WORD s = A;
+	if (SUBTRACT_FLAG)
+	{
+		if (HALFCARRY_FLAG)
+			s = (s - 0x06) & 0xFF;
+		if (CARRY_FLAG)
+			s -= 0x60;
+	}
+	else
+	{
+		if (HALFCARRY_FLAG || (s & 0x0F) > 9)
+			s += 0x06;
+		if (CARRY_FLAG || s > 0x9F)
+			s += 0x60;
+	}
 
-cycle_t CCD();
+	A = static_cast<BYTE>(s);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+	if (s >= 0x100)
+		SET_FLAG(CARRY_FLAG);
+}
+opfuncb(jr_z_n) {
+	if (ZERO_FLAG)
+	{
+		PC += SIGNED_BYTE(OPERAND);
+		TICKS += 12;
+	}
+	else TICKS += 8;
+}
+opfuncv(add_hl_hl) { ADDW(HL, HL); }
+opfuncv(ldi_a_hlp) { A = ReadByte(HL++); }
+opfuncv(dec_hl) { HL--; }
+opfuncv(inc_l) { L = INC(L); }
+opfuncv(dec_l) { L = DEC(L); }
+opfuncb(ld_l_n) { L = OPERAND; }
+opfuncv(cpl) {
+	A = ~A;
+	SET_FLAG(SUBTRACT_FLAG);
+	SET_FLAG(HALFCARRY_FLAG);
+}
+opfuncb(jr_nc_n) {
+	if (CARRY_FLAG)
+		TICKS += 8;
+	else
+	{
+		PC += SIGNED_BYTE(OPERAND);
+		TICKS += 12;
+	}
 
-void CP(BYTE n);
-void CP_n();
+}
+opfuncw(ld_sp_nn) { SP = OPERAND; }
+opfuncv(ldd_hlp_a) { WriteByte(HL--, A); }
+opfuncv(inc_sp) { SP--; }
+opfuncv(inc_hlp) { WriteByte(HL, INC(ReadByte(HL))); }
+opfuncv(dec_hlp) { WriteByte(HL, DEC(ReadByte(HL))); }
+opfuncb(ld_hlp_n) { WriteByte(HL, OPERAND); }
+opfuncv(scf) {
+	SET_FLAG(CARRY_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	CLEAR_FLAG(HALFCARRY_FLAG);
+}
+opfuncb(jr_c_n) {
+	if (CARRY_FLAG)
+	{
+		PC += SIGNED_BYTE(OPERAND);
+		TICKS += 12;
+	}
+	else TICKS += 8;
+}
+opfuncv(add_hl_sp) { ADDW(HL, SP); }
+opfuncv(ldd_a_hlp) { A = ReadByte(HL--); }
+opfuncv(dec_sp) { SP--; }
+opfuncv(inc_a) { A = INC(A); }
+opfuncv(dec_a) { A = DEC(A); }
+opfuncb(ld_a_n) { A = OPERAND; }
+opfuncv(ccf) {
+	CLEAR_IF_ELSE_SET(CARRY_FLAG, CARRY_FLAG);
+	SET_FLAG(SUBTRACT_FLAG);
+	SET_FLAG(HALFCARRY_FLAG);
+}
 
-void DAA();
+opfuncv(ld_b_c) { B = C; }
+opfuncv(ld_b_d) { B = D; }
+opfuncv(ld_b_e) { B = E; }
+opfuncv(ld_b_h) { B = H; }
+opfuncv(ld_b_l) { B = L; }
+opfuncv(ld_b_hlp) { B = ReadByte(HL); }
+opfuncv(ld_b_a) { B = A; }
 
-void DEC_r(opcode_t op);
-void DEC_rr(opcode_t op);
+opfuncv(ld_c_b) { C = B; }
+opfuncv(ld_c_d) { C = D; }
+opfuncv(ld_c_e) { C = E; }
+opfuncv(ld_c_h) { C = H; }
+opfuncv(ld_c_l) { C = L; }
+opfuncv(ld_c_hlp) { C = ReadByte(HL); }
+opfuncv(ld_c_a) { C = A; }
 
-void DI();
-cycle_t EI();
+opfuncv(ld_d_b) { D = B; }
+opfuncv(ld_d_c) { D = C; }
+opfuncv(ld_d_e) { D = E; }
+opfuncv(ld_d_h) { D = H; }
+opfuncv(ld_d_l) { D = L; }
+opfuncv(ld_d_hlp) { D = ReadByte(HL); }
+opfuncv(ld_d_a) { D = A; }
 
-cycle_t HALT();
+opfuncv(ld_e_b) { E = B; }
+opfuncv(ld_e_c) { E = C; }
+opfuncv(ld_e_d) { E = D; }
+opfuncv(ld_e_h) { E = H; }
+opfuncv(ld_e_l) { E = L; }
+opfuncv(ld_e_hlp) { E = ReadByte(HL); }
+opfuncv(ld_e_a) { E = A; }
 
-void INC_r(opcode_t op);
-void INC_rr(opcode_t op);
+opfuncv(ld_h_b) { H = B; }
+opfuncv(ld_h_c) { H = C; }
+opfuncv(ld_h_d) { H = D; }
+opfuncv(ld_h_e) { H = E; }
+opfuncv(ld_h_l) { H = L; }
+opfuncv(ld_h_hlp) { H = ReadByte(HL); }
+opfuncv(ld_h_a) { H = A; }
 
-void JP_HL();
-cycle_t JP_c_nn(opcode_t op);
-cycle_t JP_nn();
+opfuncv(ld_l_b) { L = B; }
+opfuncv(ld_l_c) { L = C; }
+opfuncv(ld_l_d) { L = D; }
+opfuncv(ld_l_e) { L = E; }
+opfuncv(ld_l_h) { L = H; }
+opfuncv(ld_l_hlp) { L = ReadByte(HL); }
+opfuncv(ld_l_a) { L = A; }
 
-cycle_t JR_nn(opcode_t op);
-cycle_t JR_e();
+opfuncv(ld_hlp_b) { WriteByte(HL, B); }
+opfuncv(ld_hlp_c) { WriteByte(HL, C); }
+opfuncv(ld_hlp_d) { WriteByte(HL, D); }
+opfuncv(ld_hlp_e) { WriteByte(HL, E); }
+opfuncv(ld_hlp_h) { WriteByte(HL, H); }
+opfuncv(ld_hlp_l) { WriteByte(HL, L); }
+opfuncv(halt) {
+	if (__INT.master) {
+		//HALT EXECUTION UNTIL AN INTERRUPT OCCURS
+	}
+	else PC++;
+}
+opfuncv(ld_hlp_a) { WriteByte(HL, A); }
 
-cycle_t LDHL_SP_n();
+opfuncv(ld_a_b) { A = B; }
+opfuncv(ld_a_c) { A = C; }
+opfuncv(ld_a_d) { A = D; }
+opfuncv(ld_a_e) { A = E; }
+opfuncv(ld_a_l) { A = L; }
+opfuncv(ld_a_h) { A = H; }
+opfuncv(ld_a_hlp) { A = ReadByte(HL); }
 
-cycle_t LDH_FFC_A();
-void LDH_FFnn();
 
-cycle_t LD_A_BC();
-cycle_t LD_A_C();
-cycle_t LD_A_DE();
-cycle_t LD_A_HLI();
-cycle_t LD_A_n();
-cycle_t LD_A_nn();
-cycle_t LD_BC_A();
-cycle_t LD_DE_A();
-cycle_t LD_FFn_A();
-cycle_t LD_HLD_A();
-cycle_t LD_HLI_A();
-cycle_t LD_a16_SP();
-cycle_t LD_dd_nn(opcode_t op);
-cycle_t LD_nn_A();
-cycle_t LD_r_n(opcode_t op);
-void LD_r_r(opcode_t op);
 
-cycle_t NOP();
 
-void OP(BYTE n);
-void OR_n();
-void OR_r(opcode_t op);
 
-cycle_t POP_rr(opcode_t op);
-cycle_t PUSH_rr(opcode_t op);
-cycle_t RET();
-cycle_t RETI();
-cycle_t RET_c(opcode_t op);
 
-void RLA();
-void RLCA();
-void RRA();
-void RRCA();
 
-cycle_t RST_p(opcode_t op);
 
-void SBC_n();
-void SBC_r(opcode_t op);
 
-cycle_t SCF();
 
-cycle_t STOP();
 
-void SUB(BYTE n);
-void SUB_n();
-void SUB_r(opcode_t op);
 
-void XOR_n();
-void XOR_r(opcode_t op);
+
+#define DEF_OPCODE(name, length, func) { (name), (length), (func) }
+#define OPV(func) DEF_OPCODE(#func, 0, static_cast<opfunc_v>(func))
+#define OPB(func) DEF_OPCODE(#func, 1, static_cast<opfunc_b>(func))
+#define OPW(func) DEF_OPCODE(#func, 2, static_cast<opfunc_w>(func))
+#define INVALID_OP Opcode()
+
+
+
+const Opcode OPCODES[256] = {
+	/* 00 */ OPV(nop),
+	/* 01 */ OPW(ld_bc_nn),
+	/* 02 */ OPV(ld_bcp_a),
+	/* 03 */ OPV(inc_bc),
+	/* 04 */ OPV(inc_b),
+	/* 05 */ OPV(dec_b),
+	/* 06 */ OPB(ld_b_n),
+	/* 07 */ OPV(rlca)
+};
+

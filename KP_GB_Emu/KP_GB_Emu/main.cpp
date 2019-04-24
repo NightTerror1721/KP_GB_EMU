@@ -1,35 +1,25 @@
+
+#include "registers.h"
+#include "mmu.h"
+#include "cpu.h"
+#include "inputs.h"
+
 #include <iostream>
-#include <cstdint>
-#include <cstring>
 
-#include <GL/glut.h>
+int main(int argc, char** argv)
+{
 
+	Registers regs;
+	MMU mmu;
 
-#include "kernel.h"
+	mmu.writeByte(0xc000, 17);
+	std::cout << static_cast<int>(mmu.readByte(0xc000)) << std::endl;
 
+	std::cout << sizeof(Inputs) << std::endl;
 
-
-int main(int argc, char** argv) {
-	std::cout << "Hello world" << std::endl;
-
-	/*CPU cpu;
-	std::cout << sizeof(CPU) << std::endl;
-
-	std::memset(&cpu, 0, sizeof(CPU));
-
-	//regs.B = 1;
-	cpu.reg.C = 1;
-
-	//Memory m;
-
-	Kernel k;
-	const CPU* c = k.cpu;*/
-	
-	
-
-	std::cout << sizeof(Memory) << std::endl;
+	//mmu.dumpInternalRam();
 
 	std::system("pause");
+
+	return 0;
 }
-
-
