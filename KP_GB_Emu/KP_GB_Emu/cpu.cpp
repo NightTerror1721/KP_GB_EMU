@@ -520,6 +520,79 @@ opfuncv(ld_a_l) { A = L; }
 opfuncv(ld_a_h) { A = H; }
 opfuncv(ld_a_hlp) { A = ReadByte(HL); }
 
+opfuncv(add_a_b) { ADD(A, B); }
+opfuncv(add_a_c) { ADD(A, C); }
+opfuncv(add_a_d) { ADD(A, D); }
+opfuncv(add_a_e) { ADD(A, E); }
+opfuncv(add_a_h) { ADD(A, H); }
+opfuncv(add_a_l) { ADD(A, L); }
+opfuncv(add_a_hlp) { ADD(A, ReadByte(HL)); }
+opfuncv(add_a_a) { ADD(A, B); }
+
+opfuncv(adc_b) { ADC(B); }
+opfuncv(adc_c) { ADC(C); }
+opfuncv(adc_d) { ADC(D); }
+opfuncv(adc_e) { ADC(E); }
+opfuncv(adc_h) { ADC(H); }
+opfuncv(adc_l) { ADC(L); }
+opfuncv(adc_hlp) { ADC(ReadByte(HL)); }
+opfuncv(adc_a) { ADC(A); }
+
+opfuncv(sub_b) { SUB(B); }
+opfuncv(sub_c) { SUB(C); }
+opfuncv(sub_d) { SUB(D); }
+opfuncv(sub_e) { SUB(E); }
+opfuncv(sub_h) { SUB(H); }
+opfuncv(sub_l) { SUB(L); }
+opfuncv(sub_hlp) { SUB(ReadByte(HL)); }
+opfuncv(sub_a) { SUB(A); }
+
+opfuncv(sbc_b) { SBC(B); }
+opfuncv(sbc_c) { SBC(C); }
+opfuncv(sbc_d) { SBC(D); }
+opfuncv(sbc_e) { SBC(E); }
+opfuncv(sbc_h) { SBC(H); }
+opfuncv(sbc_l) { SBC(L); }
+opfuncv(sbc_hlp) { SBC(ReadByte(HL)); }
+opfuncv(sbc_a) { SBC(A); }
+
+opfuncv(and_b) { AND(B); }
+opfuncv(and_c) { AND(C); }
+opfuncv(and_d) { AND(D); }
+opfuncv(and_e) { AND(E); }
+opfuncv(and_h) { AND(H); }
+opfuncv(and_l) { AND(L); }
+opfuncv(and_hlp) { AND(ReadByte(HL)); }
+opfuncv(and_a) { AND(A); }
+
+opfuncv(xor_b) { XOR(B); }
+opfuncv(xor_c) { XOR(C); }
+opfuncv(xor_d) { XOR(D); }
+opfuncv(xor_e) { XOR(E); }
+opfuncv(xor_h) { XOR(H); }
+opfuncv(xor_l) { XOR(L); }
+opfuncv(xor_hlp) { XOR(ReadByte(HL)); }
+opfuncv(xor_a) { XOR(A); }
+
+opfuncv(or_b) { OR(B); }
+opfuncv(or_c) { OR(C); }
+opfuncv(or_d) { OR(D); }
+opfuncv(or_e) { OR(E); }
+opfuncv(or_h) { OR(H); }
+opfuncv(or_l) { OR(L); }
+opfuncv(or_hlp) { OR(ReadByte(HL)); }
+opfuncv(or_a) { OR(A); }
+
+opfuncv(cp_b) { CP(B); }
+opfuncv(cp_c) { CP(C); }
+opfuncv(cp_d) { CP(D); }
+opfuncv(cp_e) { CP(E); }
+opfuncv(cp_h) { CP(H); }
+opfuncv(cp_l) { CP(L); }
+opfuncv(cp_hlp) { CP(ReadByte(HL)); }
+opfuncv(cp_a) { CP(A); }
+
+
 
 
 
