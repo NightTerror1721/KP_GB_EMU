@@ -26,4 +26,6 @@ struct Inputs
 	};
 
 	Inputs() : all(0) {}
+
+	void reset() { all = 0; }
 };

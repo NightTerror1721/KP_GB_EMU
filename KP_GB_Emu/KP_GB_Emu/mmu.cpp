@@ -2,51 +2,6 @@
 
 #include <iostream>
 
-unsigned long long operator "" _kB(unsigned long long value)
-{
-	return value * 0x400;
-}
-
-unsigned long long operator "" _MB(unsigned long long value)
-{
-	return value * 0x10000;
-}
-
-AddressSide::AddressSide(const address_t& offset, const address_t& length) :
-	_offset(offset),
-	_length(length)
-{}
-
-void AddressSide::writeByte(const address_t& offset, const byte_t& value)
-{
-	if (offset >= _offset && offset - _offset < _length)
-		_writeByte(offset - _offset, value);
-}
-
-void AddressSide::writeWord(const address_t& offset, const word_t& value)
-{
-	if (offset >= _offset && (offset + 1) - _offset < _length)
-		_writeWord(offset - _offset, value);
-}
-
-byte_t AddressSide::readByte(const address_t& offset) const
-{
-	return offset >= _offset && offset - _offset < _length
-		? _readByte(offset - _offset)
-		: 0;
-}
-
-word_t AddressSide::readWord(const address_t& offset) const
-{
-	return offset >= _offset && (offset + 1) - _offset < _length
-		? _readWord(offset - _offset)
-		: 0;
-}
-
-bool AddressSide::validAddress(const address_t& offset) { return offset >= _offset && offset - _offset < _length; }
-
-
-
 
 RAM::RAM(const address_t& offset, const address_t& length) :
 	AddressSide(offset, length),
@@ -105,14 +60,22 @@ void RAM::dump(const unsigned int& columns)
 	std::cout << std::dec << std::endl;
 }
 
+void RAM::reset()
+{
+	if (!_shadow)
+		clear();
+}
 
 
 
 
-MMU::MMU() :
+
+MMU::MMU(const bool& gbc_bios) :
 	_invalidAddress(),
 	_ram(0xC000, static_cast<address_t>(8_kB)),
-	_shadowRam(0xE000, _ram)
+	_shadowRam(0xE000, _ram),
+	_bios(gbc_bios ? Bios::gbc() : Bios::gb()),
+	_biosMode(true)
 {}
 
 void MMU::dumpInternalRam(const unsigned int& columns) { _ram.dump(columns); }
@@ -123,6 +86,13 @@ AddressSide& MMU::findSide(const address_t& offset)
 	{
 		/* ROM bank #0 */
 		case 0x0000:
+			if (_biosMode)
+			{
+				if (offset < 0x100)
+					return *_bios;
+				else if (offset < 0x800 && _bios->isGBC())
+					return *_bios;
+			}
 		case 0x1000:
 		case 0x2000:
 		case 0x3000:
@@ -187,5 +157,43 @@ byte_t MMU::readByte(const address_t& offset) const
 word_t MMU::readWord(const address_t& offset) const
 {
 	return CSIDE_REF(offset).readWord(offset);
+}
+
+void MMU::reset()
+{
+	_ram.reset();
+
+
+	writeByte(0xFF05, 0);
+	writeByte(0xFF06, 0);
+	writeByte(0xFF07, 0);
+	writeByte(0xFF10, 0x80);
+	writeByte(0xFF11, 0xBF);
+	writeByte(0xFF12, 0xF3);
+	writeByte(0xFF14, 0xBF);
+	writeByte(0xFF16, 0x3F);
+	writeByte(0xFF17, 0x00);
+	writeByte(0xFF19, 0xBF);
+	writeByte(0xFF1A, 0x7A);
+	writeByte(0xFF1B, 0xFF);
+	writeByte(0xFF1C, 0x9F);
+	writeByte(0xFF1E, 0xBF);
+	writeByte(0xFF20, 0xFF);
+	writeByte(0xFF21, 0x00);
+	writeByte(0xFF22, 0x00);
+	writeByte(0xFF23, 0xBF);
+	writeByte(0xFF24, 0x77);
+	writeByte(0xFF25, 0xF3);
+	writeByte(0xFF26, 0xF1);
+	writeByte(0xFF40, 0x91);
+	writeByte(0xFF42, 0x00);
+	writeByte(0xFF43, 0x00);
+	writeByte(0xFF45, 0x00);
+	writeByte(0xFF47, 0xFC);
+	writeByte(0xFF48, 0xFF);
+	writeByte(0xFF49, 0xFF);
+	writeByte(0xFF4A, 0x00);
+	writeByte(0xFF4B, 0x00);
+	writeByte(0xFFFF, 0x00);
 }
 

@@ -1,0 +1,174 @@
+[0](0x31) ld_sp_nn	65534
+[3](0xaf) xor_a
+[4](0x21) ld_hl_nn	40959
+[7](0x32) ldd_hlp_a
+[8](0xcb) cb_ext	124
+[10](0x20) jr_nz_n	251
+[12](0x21) ld_hl_nn	65318
+[15](0xe) ld_c_n	17
+[17](0x3e) ld_a_n	128
+[19](0x32) ldd_hlp_a
+[20](0xe2) ld_ff_c_a
+[21](0xc) inc_c
+[22](0x3e) ld_a_n	243
+[24](0xe2) ld_ff_c_a
+[25](0x32) ldd_hlp_a
+[26](0x3e) ld_a_n	119
+[28](0x77) ld_hlp_a
+[29](0x3e) ld_a_n	252
+[31](0xe0) ld_ff_n_ap	71
+[33](0x11) ld_de_nn	260
+[36](0x21) ld_hl_nn	32784
+[39](0x1a) ld_a_dep
+[40](0xcd) call_nn	149
+[43](0xcd) call_nn	150
+[46](0x13) inc_de
+[47](0x7b) ld_a_e
+[48](0xfe) cp_n
+[49](0x34) inc_hlp
+[50](0x20) jr_nz_n	243
+[52](0x11) ld_de_nn	216
+[55](0x6) ld_b_n	8
+[57](0x1a) ld_a_dep
+[58](0x13) inc_de
+[59](0x22) ldi_hlp_a
+[60](0x23) inc_hl
+[61](0x5) dec_b
+[62](0x20) jr_nz_n	249
+[64](0x3e) ld_a_n	25
+[66](0xea) ld_nnp_a	39184
+[69](0x21) ld_hl_nn	39215
+[72](0xe) ld_c_n	12
+[74](0x3d) dec_a
+[75](0x28) jr_z_n	8
+[77](0x32) ldd_hlp_a
+[78](0xd) dec_c
+[79](0x20) jr_nz_n	249
+[81](0x2e) ld_l_n	15
+[83](0x18) jr_n	243
+[85](0x67) ld_h_a
+[86](0x3e) ld_a_n	100
+[88](0x57) ld_d_a
+[89](0xe0) ld_ff_n_ap	66
+[91](0x3e) ld_a_n	145
+[93](0xe0) ld_ff_n_ap	64
+[95](0x4) inc_b
+[96](0x1e) ld_e_n	2
+[98](0xe) ld_c_n	12
+[100](0xf0) ld_ff_ap_n
+[101](0x44) ld_b_h
+[102](0xfe) cp_n
+[103](0x90) sub_b
+[104](0x20) jr_nz_n	250
+[106](0xd) dec_c
+[107](0x20) jr_nz_n	247
+[109](0x1d) dec_e
+[110](0x20) jr_nz_n	242
+[112](0xe) ld_c_n	19
+[114](0x24) inc_h
+[115](0x7c) ld_a_h
+[116](0x1e) ld_e_n	131
+[118](0xfe) cp_n
+[119](0x62) ld_h_d
+[120](0x28) jr_z_n	6
+[122](0x1e) ld_e_n	193
+[124](0xfe) cp_n
+[125](0x64) nop
+[126](0x20) jr_nz_n	6
+[128](0x7b) ld_a_e
+[129](0xe2) ld_ff_c_a
+[130](0xc) inc_c
+[131](0x3e) ld_a_n	135
+[133](0xe2) ld_ff_c_a
+[134](0xf0) ld_ff_ap_n
+[135](0x42) ld_b_d
+[136](0x90) sub_b
+[137](0xe0) ld_ff_n_ap	66
+[139](0x15) dec_d
+[140](0x20) jr_nz_n	210
+[142](0x5) dec_b
+[143](0x20) jr_nz_n	79
+[145](0x16) ld_d_n	32
+[147](0x18) jr_n	203
+[149](0x4f) ld_c_a
+[150](0x6) ld_b_n	4
+[152](0xc5) push_bc
+[153](0xcb) cb_ext	17
+[155](0x17) rla
+[156](0xc1) pop_bc
+[157](0xcb) cb_ext	17
+[159](0x17) rla
+[160](0x5) dec_b
+[161](0x20) jr_nz_n	245
+[163](0x22) ldi_hlp_a
+[164](0x23) inc_hl
+[165](0x22) ldi_hlp_a
+[166](0x23) inc_hl
+[167](0xc9) ret
+[168](0xce) adc_n	237
+[170](0x66) ld_h_hlp
+[171](0x66) ld_h_hlp
+[172](0xcc) call_z_nn	13
+[175](0xb) dec_bc
+[176](0x3) inc_bc
+[177](0x73) ld_hlp_e
+[178](0x0) nop
+[179](0x83) add_a_e
+[180](0x0) nop
+[181](0xc) inc_c
+[182](0x0) nop
+[183](0xd) dec_c
+[184](0x0) nop
+[185](0x8) ld_nnp_sp	7953
+[188](0x88) adc_b
+[189](0x89) adc_c
+[190](0x0) nop
+[191](0xe) ld_c_n	220
+[193](0xcc) call_z_nn	58990
+[196](0xdd) <unknown_opcode>
+[197](0xdd) <unknown_opcode>
+[198](0xd9) reti
+[199](0x99) sbc_c
+[200](0xbb) cp_e
+[201](0xbb) cp_e
+[202](0x67) ld_h_a
+[203](0x63) ld_h_e
+[204](0x6e) ld_l_hlp
+[205](0xe) ld_c_n	236
+[207](0xcc) call_z_nn	56541
+[210](0x99) sbc_c
+[211](0x9f) sbc_a
+[212](0xbb) cp_e
+[213](0xb9) cp_c
+[214](0x33) inc_sp
+[215](0x3e) ld_a_n	60
+[217](0x42) ld_b_d
+[218](0xb9) cp_c
+[219](0xa5) and_l
+[220](0xb9) cp_c
+[221](0xa5) and_l
+[222](0x42) ld_b_d
+[223](0x3c) inc_a
+[224](0x21) ld_hl_nn	260
+[227](0x11) ld_de_nn	168
+[230](0x1a) ld_a_dep
+[231](0x13) inc_de
+[232](0xbe) cp_hlp
+[233](0x0) nop
+[234](0x0) nop
+[235](0x23) inc_hl
+[236](0x7d) ld_a_l
+[237](0xfe) cp_n
+[238](0x34) inc_hlp
+[239](0x20) jr_nz_n	245
+[241](0x6) ld_b_n	25
+[243](0x78) ld_a_b
+[244](0x86) add_a_hlp
+[245](0x23) inc_hl
+[246](0x5) dec_b
+[247](0x20) jr_nz_n	251
+[249](0x86) add_a_hlp
+[250](0x0) nop
+[251](0x0) nop
+[252](0x3e) ld_a_n	1
+[254](0xe0) ld_ff_n_ap	80

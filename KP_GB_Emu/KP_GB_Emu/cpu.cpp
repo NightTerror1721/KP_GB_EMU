@@ -1,24 +1,17 @@
 #include "cpu.h"
+#include "stack_ops.h"
+#include "extended_opcodes.h"
+#include "debug.h"
+
+#include <fstream>
 
 void invalid_opcode(MMU* const& mmu, CPU* const& cpu) {}
 
 
-Opcode::Opcode(const std::string& name, uint8_t length, opfunc_w func) :
+Opcode::Opcode(const std::string& name, uint8_t length, opfunc func) :
 	_name(name),
 	_length(length),
-	_func(static_cast<opfunc>(func))
-{}
-
-Opcode::Opcode(const std::string& name, uint8_t length, opfunc_b func) :
-	_name(name),
-	_length(length),
-	_func(static_cast<opfunc>(func))
-{}
-
-Opcode::Opcode(const std::string& name, uint8_t length, opfunc_v func) :
-	_name(name),
-	_length(length),
-	_func(static_cast<opfunc>(func))
+	_func(func)
 {}
 
 Opcode::Opcode() :
@@ -49,9 +42,69 @@ void Opcode::operator() (MMU* const& mmu, CPU* const& cpu, const word_t& operand
 		static_cast<opfunc_w>(_func)(mmu, cpu, operand);
 }
 
-void Opcode::undefined()
+byte_t Opcode::ticks(const byte_t& opcode_id) { return OPCODE_TICKS[opcode_id]; }
+const Opcode* Opcode::opcode(const byte_t& opcode_id) { return &OPCODES[opcode_id]; }
+void Opcode::execute(MMU* const& mmu, CPU* const& cpu, const byte_t& opcode_id)
 {
+	const Opcode& op = OPCODES[opcode_id];
 
+	switch (op._length)
+	{
+		case 0: {
+			op(mmu, cpu);
+			db_info("OPCODE %s", op.name().c_str())
+		} break;
+		case 1: {
+			byte_t operand = mmu->readByte(cpu->regs.PC++);
+			op(mmu, cpu, operand);
+			db_info("OPCODE %s, %u", op.name().c_str(), operand)
+		} break;
+		case 2: {
+			word_t operand = mmu->readWord(cpu->regs.PC);
+			cpu->regs.PC += 2;
+			op(mmu, cpu, operand);
+			db_info("OPCODE %s, %u", op.name().c_str(), operand)
+		} break;
+	}
+	cpu->ticks += OPCODE_TICKS[opcode_id];
+}
+
+void Opcode::dumpCodeToFile(const char* filename, const byte_t* code, size_t size)
+{
+	std::fstream file(filename, std::fstream::out);
+
+	const size_t csize = size;
+	while (size > 0)
+	{
+		size--;
+		const unsigned int opid = *(code++);
+		const Opcode& op = OPCODES[opid];
+		
+
+		switch (op.length())
+		{
+			case 0: file << "[" << (csize - size - 1) << "](0x" << std::hex << opid << std::dec << ") " << op.name() << std::endl; break;
+			case 1:
+				if (size > 0)
+				{
+					size--;
+					int operand = static_cast<int>(*(code++));
+					file << "[" << (csize - size - 2) << "](0x" << std::hex << opid << std::dec << ") " << op.name() << "\t" << operand << std::endl;
+				}
+				break;
+			case 2:
+				if (size > 1)
+				{
+					size -= 2;
+					int operand = static_cast<int>(*reinterpret_cast<const word_t*>(code));
+					code += 2;
+					file << "[" << (csize - size - 3) << "](0x" << std::hex << opid << std::dec << ") " << op.name() << "\t" << operand << std::endl;
+				}
+				break;
+		}
+	}
+
+	file.close();
 }
 
 
@@ -64,12 +117,32 @@ CPU::CPU() :
 
 void CPU::step(MMU* const& mmu)
 {
+	if (_stopped)
+		return;
 
+	byte_t instruction = mmu->readByte(regs.PC++);
+	Opcode::execute(mmu, this, instruction);
 }
 
 void CPU::reset()
 {
+	regs.A = 0x01;
+	regs.F = 0xb0;
+	regs.B = 0x00;
+	regs.C = 0x13;
+	regs.D = 0x00;
+	regs.E = 0xd8;
+	regs.H = 0x01;
+	regs.L = 0x4d;
+	regs.SP = 0xfffe;
+	regs.PC = 0x0100;
 
+	ints.master = true;
+	ints.enabled = 0;
+	ints.flags = 0;
+
+	ticks = 0;
+	_stopped = false;
 }
 
 void CPU::stop() { _stopped = true; }
@@ -90,7 +163,7 @@ bool CPU::isStopped() { return _stopped; }
 #define __MMU mmu
 #define __REG __CPU->regs
 #define __INT __CPU->ints
-#define __ARGS mmu, cpu
+#define __ARGS __MMU, __CPU
 #define BASE_ARGS MMU* const& __MMU, CPU* const& __CPU
 #define BYTE_ARG const BYTE&
 #define WORD_ARG const WORD&
@@ -276,6 +349,9 @@ void __cp(BASE_ARGS, BYTE_ARG value)
 
 #define SIGNED_BYTE(value) static_cast<int8_t>(value)
 #define SIGNED_WORD(value) static_cast<int16_t>(value)
+
+#define STACK_READ_WORD() Stack::readWord(__ARGS)
+#define STACK_WRITE_WORD(value) Stack::writeWord(__ARGS, (value))
 
 #define TICKS __CPU->ticks
 
@@ -592,6 +668,184 @@ opfuncv(cp_l) { CP(L); }
 opfuncv(cp_hlp) { CP(ReadByte(HL)); }
 opfuncv(cp_a) { CP(A); }
 
+opfuncv(ret_nz) {
+	if (ZERO_FLAG)
+		TICKS += 8;
+	else
+	{
+		PC = STACK_READ_WORD();
+		TICKS += 20;
+	}
+}
+opfuncv(pop_bc) { BC = STACK_READ_WORD(); }
+opfuncw(jp_nz_nn) {
+	if (ZERO_FLAG)
+		TICKS += 12;
+	else
+	{
+		PC = OPERAND;
+		TICKS += 16;
+	}
+}
+opfuncw(jp_nn) { PC = OPERAND; }
+opfuncw(call_nz_nn) {
+	if (ZERO_FLAG)
+		TICKS += 12;
+	else
+	{
+		STACK_WRITE_WORD(PC);
+		PC = OPERAND;
+		TICKS += 24;
+	}
+}
+opfuncv(push_bc) { STACK_WRITE_WORD(BC); }
+opfuncb(add_a_n) { ADD(A, OPERAND); }
+opfuncv(rst_0) { STACK_WRITE_WORD(PC); PC = 0x0000; }
+opfuncv(ret_z) {
+	if (ZERO_FLAG)
+	{
+		PC = STACK_READ_WORD();
+		TICKS += 20;
+	}
+	else TICKS += 8;
+}
+opfuncv(ret) { PC = STACK_READ_WORD(); }
+opfuncw(jp_z_nn) {
+	if (ZERO_FLAG)
+	{
+		PC = OPERAND;
+		TICKS += 16;
+	}
+	else TICKS += 12;
+}
+opfuncb(cb_ext) { OpCB::cb_op(__ARGS, OPERAND); }
+opfuncw(call_z_nn) {
+	if (ZERO_FLAG)
+	{
+		STACK_WRITE_WORD(PC);
+		PC = OPERAND;
+		TICKS += 24;
+	}
+	else TICKS += 12;
+}
+opfuncw(call_nn) { STACK_WRITE_WORD(PC); PC = OPERAND; }
+opfuncb(adc_n) { ADC(OPERAND); }
+opfuncv(rst_08) { STACK_WRITE_WORD(PC); PC = 0x0008; }
+opfuncv(ret_nc) {
+	if (CARRY_FLAG)
+		TICKS += 8;
+	else
+	{
+		PC = STACK_READ_WORD();
+		TICKS += 20;
+	}
+}
+opfuncv(pop_de) { DE = STACK_READ_WORD(); }
+opfuncw(jp_nc_nn) {
+	if (CARRY_FLAG)
+	{
+		PC = OPERAND;
+		TICKS += 16;
+	}
+	else TICKS += 12;
+}
+opfuncw(call_nc_nn) {
+	if (CARRY_FLAG)
+	{
+		STACK_WRITE_WORD(PC);
+		PC = OPERAND;
+		TICKS += 24;
+	}
+	else TICKS += 12;
+}
+opfuncv(push_de) { STACK_WRITE_WORD(DE); }
+opfuncb(sub_n) { SUB(OPERAND); }
+opfuncv(rst_10) { STACK_WRITE_WORD(PC); PC = 0x0010; }
+opfuncw(ret_c) {
+	if (CARRY_FLAG)
+	{
+		PC = STACK_READ_WORD();
+		TICKS += 20;
+	}
+	else TICKS += 8;
+}
+opfuncv(reti) { __INT.returnFromInterrupt(__ARGS); }
+opfuncw(jp_c_nn) {
+	if (CARRY_FLAG)
+	{
+		PC = OPERAND;
+		TICKS += 16;
+	}
+	else TICKS += 12;
+}
+opfuncw(call_c_nn) {
+	if (CARRY_FLAG)
+	{
+		STACK_WRITE_WORD(PC);
+		PC = OPERAND;
+		TICKS += 24;
+	}
+	else TICKS += 12;
+}
+opfuncb(sbc_n) { SBC(OPERAND); }
+opfuncv(rst_18) { STACK_WRITE_WORD(PC); PC = 0x0018; }
+opfuncb(ld_ff_n_ap) { WriteByte(0xFF00 + OPERAND, A); }
+opfuncv(pop_hl) { HL = STACK_READ_WORD(); }
+opfuncv(ld_ff_c_a) { WriteByte(0xFF00 + C, A); }
+opfuncv(push_hl) { STACK_WRITE_WORD(HL); }
+opfuncb(and_n) {
+	A &= OPERAND;
+
+	CLEAR_FLAG(CARRY_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+	SET_FLAG(HALFCARRY_FLAG);
+	CLEAR_IF_ELSE_SET(ZERO_FLAG, A);
+}
+opfuncv(rst_20) { STACK_WRITE_WORD(PC); PC = 0x0020; }
+opfuncb(add_sp_n) {
+	int result = SP + SIGNED_BYTE(OPERAND);
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, result & 0xFFFF0000);
+
+	SP = result & 0xFFFF;
+
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (SP & 0x0F) + (OPERAND & 0x0F) > 0x0F);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+}
+opfuncv(jp_hl) { PC = HL; }
+opfuncw(ld_nnp_a) { WriteByte(OPERAND, A); }
+opfuncb(xor_n) { XOR(OPERAND); }
+opfuncv(rst_28) { STACK_WRITE_WORD(PC); PC = 0x0028; }
+opfuncb(ld_ff_ap_n) { A = ReadByte(0xFF00 + OPERAND); }
+opfuncv(pop_af) { AF = STACK_READ_WORD(); }
+opfuncv(ld_a_ff_c) { A = ReadByte(0xFF00 + C); }
+opfuncv(di_inst) { __INT.master = false; }
+opfuncv(push_af) { STACK_WRITE_WORD(AF); }
+opfuncb(or_n) { OR(OPERAND); }
+opfuncv(rst_30) { STACK_WRITE_WORD(PC); PC = 0x0030; }
+opfuncb(ld_hl_sp_n) {
+	int result = SP + SIGNED_BYTE(OPERAND);
+
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, result & 0xFFFF0000);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (SP & 0x0F) + (OPERAND & 0x0F) > 0x0F);
+	CLEAR_FLAG(ZERO_FLAG);
+	CLEAR_FLAG(SUBTRACT_FLAG);
+
+	HL = SIGNED_BYTE(result & 0xFFFF);
+}
+opfuncv(ld_sp_hl) { SP = HL; }
+opfuncw(ld_a_nnp) { A = ReadByte(OPERAND); }
+opfuncv(ei) { __INT.master = true; }
+opfuncb(cp_n) {
+	SET_FLAG(SUBTRACT_FLAG);
+
+	SET_IF_ELSE_CLEAR(ZERO_FLAG, A == OPERAND);
+	SET_IF_ELSE_CLEAR(CARRY_FLAG, OPERAND > A);
+	SET_IF_ELSE_CLEAR(HALFCARRY_FLAG, (OPERAND & 0x0F) > (A & 0x0F));
+}
+opfuncv(rst_38) { STACK_WRITE_WORD(PC); PC = 0x0038; }
+
+
 
 
 
@@ -606,21 +860,304 @@ opfuncv(cp_a) { CP(A); }
 
 
 #define DEF_OPCODE(name, length, func) { (name), (length), (func) }
-#define OPV(func) DEF_OPCODE(#func, 0, static_cast<opfunc_v>(func))
-#define OPB(func) DEF_OPCODE(#func, 1, static_cast<opfunc_b>(func))
-#define OPW(func) DEF_OPCODE(#func, 2, static_cast<opfunc_w>(func))
-#define INVALID_OP Opcode()
+#define OP_VOID(func) DEF_OPCODE(#func, 0, static_cast<opfunc>(func))
+#define OP_BYTE(func) DEF_OPCODE(#func, 1, static_cast<opfunc>(func))
+#define OP_WORD(func) DEF_OPCODE(#func, 2, static_cast<opfunc>(func))
+#define INVALID_OP {}
 
 
 
 const Opcode OPCODES[256] = {
-	/* 00 */ OPV(nop),
-	/* 01 */ OPW(ld_bc_nn),
-	/* 02 */ OPV(ld_bcp_a),
-	/* 03 */ OPV(inc_bc),
-	/* 04 */ OPV(inc_b),
-	/* 05 */ OPV(dec_b),
-	/* 06 */ OPB(ld_b_n),
-	/* 07 */ OPV(rlca)
+	/* 00 */ OP_VOID(nop),
+	/* 01 */ OP_WORD(ld_bc_nn),
+	/* 02 */ OP_VOID(ld_bcp_a),
+	/* 03 */ OP_VOID(inc_bc),
+	/* 04 */ OP_VOID(inc_b),
+	/* 05 */ OP_VOID(dec_b),
+	/* 06 */ OP_BYTE(ld_b_n),
+	/* 07 */ OP_VOID(rlca),
+	/* 08 */ OP_WORD(ld_nnp_sp),
+	/* 09 */ OP_VOID(add_hl_bc),
+	/* 0A */ OP_VOID(ld_a_bcp),
+	/* 0B */ OP_VOID(dec_bc),
+	/* 0C */ OP_VOID(inc_c),
+	/* 0D */ OP_VOID(dec_c),
+	/* 0E */ OP_BYTE(ld_c_n),
+	/* 0F */ OP_VOID(rrca),
+
+	/* 10 */ OP_BYTE(stop),
+	/* 11 */ OP_WORD(ld_de_nn),
+	/* 12 */ OP_VOID(ld_dep_a),
+	/* 13 */ OP_VOID(inc_de),
+	/* 14 */ OP_VOID(inc_d),
+	/* 15 */ OP_VOID(dec_d),
+	/* 16 */ OP_BYTE(ld_d_n),
+	/* 17 */ OP_VOID(rla),
+	/* 18 */ OP_BYTE(jr_n),
+	/* 19 */ OP_VOID(add_hl_de),
+	/* 1A */ OP_VOID(ld_a_dep),
+	/* 1B */ OP_VOID(dec_de),
+	/* 1C */ OP_VOID(inc_e),
+	/* 1D */ OP_VOID(dec_e),
+	/* 1E */ OP_BYTE(ld_e_n),
+	/* 1F */ OP_VOID(rra),
+
+	/* 20 */ OP_BYTE(jr_nz_n),
+	/* 21 */ OP_WORD(ld_hl_nn),
+	/* 22 */ OP_VOID(ldi_hlp_a),
+	/* 23 */ OP_VOID(inc_hl),
+	/* 24 */ OP_VOID(inc_h),
+	/* 25 */ OP_VOID(dec_h),
+	/* 26 */ OP_BYTE(ld_h_n),
+	/* 27 */ OP_VOID(daa),
+	/* 28 */ OP_BYTE(jr_z_n),
+	/* 29 */ OP_VOID(add_hl_hl),
+	/* 2A */ OP_VOID(ldi_a_hlp),
+	/* 2B */ OP_VOID(dec_hl),
+	/* 2C */ OP_VOID(inc_l),
+	/* 2D */ OP_VOID(dec_l),
+	/* 2E */ OP_BYTE(ld_l_n),
+	/* 2F */ OP_VOID(cpl),
+
+	/* 30 */ OP_BYTE(jr_nc_n),
+	/* 31 */ OP_WORD(ld_sp_nn),
+	/* 32 */ OP_VOID(ldd_hlp_a),
+	/* 33 */ OP_VOID(inc_sp),
+	/* 34 */ OP_VOID(inc_hlp),
+	/* 35 */ OP_VOID(dec_hlp),
+	/* 36 */ OP_BYTE(ld_hlp_n),
+	/* 37 */ OP_VOID(scf),
+	/* 38 */ OP_BYTE(jr_c_n),
+	/* 39 */ OP_VOID(add_hl_sp),
+	/* 3A */ OP_VOID(ldd_a_hlp),
+	/* 3B */ OP_VOID(dec_sp),
+	/* 3C */ OP_VOID(inc_a),
+	/* 3D */ OP_VOID(dec_a),
+	/* 3E */ OP_BYTE(ld_a_n),
+	/* 3F */ OP_VOID(ccf),
+
+	/* 40 */ OP_VOID(nop),
+	/* 41 */ OP_VOID(ld_b_c),
+	/* 42 */ OP_VOID(ld_b_d),
+	/* 43 */ OP_VOID(ld_b_e),
+	/* 44 */ OP_VOID(ld_b_h),
+	/* 45 */ OP_VOID(ld_b_l),
+	/* 46 */ OP_VOID(ld_b_hlp),
+	/* 47 */ OP_VOID(ld_b_a),
+	/* 48 */ OP_VOID(ld_c_b),
+	/* 49 */ OP_VOID(nop),
+	/* 4A */ OP_VOID(ld_c_d),
+	/* 4B */ OP_VOID(ld_c_e),
+	/* 4C */ OP_VOID(ld_c_h),
+	/* 4D */ OP_VOID(ld_c_l),
+	/* 4E */ OP_VOID(ld_c_hlp),
+	/* 4F */ OP_VOID(ld_c_a),
+
+	/* 50 */ OP_VOID(ld_d_b),
+	/* 51 */ OP_VOID(ld_d_c),
+	/* 52 */ OP_VOID(nop),
+	/* 53 */ OP_VOID(ld_d_e),
+	/* 54 */ OP_VOID(ld_d_h),
+	/* 55 */ OP_VOID(ld_d_l),
+	/* 56 */ OP_VOID(ld_d_hlp),
+	/* 57 */ OP_VOID(ld_d_a),
+	/* 58 */ OP_VOID(ld_e_b),
+	/* 59 */ OP_VOID(ld_e_c),
+	/* 5A */ OP_VOID(ld_e_d),
+	/* 5B */ OP_VOID(nop),
+	/* 5C */ OP_VOID(ld_e_h),
+	/* 5D */ OP_VOID(ld_e_l),
+	/* 5E */ OP_VOID(ld_e_hlp),
+	/* 5F */ OP_VOID(ld_e_a),
+
+	/* 60 */ OP_VOID(ld_h_b),
+	/* 61 */ OP_VOID(ld_h_c),
+	/* 62 */ OP_VOID(ld_h_d),
+	/* 63 */ OP_VOID(ld_h_e),
+	/* 64 */ OP_VOID(nop),
+	/* 65 */ OP_VOID(ld_h_l),
+	/* 66 */ OP_VOID(ld_h_hlp),
+	/* 67 */ OP_VOID(ld_h_a),
+	/* 68 */ OP_VOID(ld_l_b),
+	/* 69 */ OP_VOID(ld_l_c),
+	/* 6A */ OP_VOID(ld_l_d),
+	/* 6B */ OP_VOID(ld_l_e),
+	/* 6C */ OP_VOID(ld_l_h),
+	/* 6D */ OP_VOID(nop),
+	/* 6E */ OP_VOID(ld_l_hlp),
+	/* 6F */ OP_VOID(ld_l_a),
+
+	/* 70 */ OP_VOID(ld_hlp_b),
+	/* 71 */ OP_VOID(ld_hlp_c),
+	/* 72 */ OP_VOID(ld_hlp_d),
+	/* 73 */ OP_VOID(ld_hlp_e),
+	/* 74 */ OP_VOID(ld_hlp_h),
+	/* 75 */ OP_VOID(ld_hlp_l),
+	/* 76 */ OP_VOID(halt),
+	/* 77 */ OP_VOID(ld_hlp_a),
+	/* 78 */ OP_VOID(ld_a_b),
+	/* 79 */ OP_VOID(ld_a_c),
+	/* 7A */ OP_VOID(ld_a_d),
+	/* 7B */ OP_VOID(ld_a_e),
+	/* 7C */ OP_VOID(ld_a_h),
+	/* 7D */ OP_VOID(ld_a_l),
+	/* 7E */ OP_VOID(ld_l_hlp),
+	/* 7F */ OP_VOID(nop),
+
+	/* 80 */ OP_VOID(add_a_b),
+	/* 81 */ OP_VOID(add_a_c),
+	/* 82 */ OP_VOID(add_a_d),
+	/* 83 */ OP_VOID(add_a_e),
+	/* 84 */ OP_VOID(add_a_h),
+	/* 85 */ OP_VOID(add_a_l),
+	/* 86 */ OP_VOID(add_a_hlp),
+	/* 87 */ OP_VOID(add_a_a),
+	/* 88 */ OP_VOID(adc_b),
+	/* 89 */ OP_VOID(adc_c),
+	/* 8A */ OP_VOID(adc_d),
+	/* 8B */ OP_VOID(adc_e),
+	/* 8C */ OP_VOID(adc_h),
+	/* 8D */ OP_VOID(adc_l),
+	/* 8E */ OP_VOID(adc_hlp),
+	/* 8F */ OP_VOID(adc_a),
+
+	/* 90 */ OP_VOID(sub_b),
+	/* 91 */ OP_VOID(sub_c),
+	/* 92 */ OP_VOID(sub_d),
+	/* 93 */ OP_VOID(sub_e),
+	/* 94 */ OP_VOID(sub_h),
+	/* 95 */ OP_VOID(sub_l),
+	/* 96 */ OP_VOID(sub_hlp),
+	/* 97 */ OP_VOID(sub_a),
+	/* 98 */ OP_VOID(sbc_b),
+	/* 99 */ OP_VOID(sbc_c),
+	/* 9A */ OP_VOID(sbc_d),
+	/* 9B */ OP_VOID(sbc_e),
+	/* 9C */ OP_VOID(sbc_h),
+	/* 9D */ OP_VOID(sbc_l),
+	/* 9E */ OP_VOID(sbc_hlp),
+	/* 9F */ OP_VOID(sbc_a),
+
+	/* A0 */ OP_VOID(and_b),
+	/* A1 */ OP_VOID(and_c),
+	/* A2 */ OP_VOID(and_d),
+	/* A3 */ OP_VOID(and_e),
+	/* A4 */ OP_VOID(and_h),
+	/* A5 */ OP_VOID(and_l),
+	/* A6 */ OP_VOID(and_hlp),
+	/* A7 */ OP_VOID(and_a),
+	/* A8 */ OP_VOID(xor_b),
+	/* A9 */ OP_VOID(xor_c),
+	/* AA */ OP_VOID(xor_d),
+	/* AB */ OP_VOID(xor_e),
+	/* AC */ OP_VOID(xor_h),
+	/* AD */ OP_VOID(xor_l),
+	/* AE */ OP_VOID(xor_hlp),
+	/* AF */ OP_VOID(xor_a),
+
+	/* B0 */ OP_VOID(or_b),
+	/* B1 */ OP_VOID(or_c),
+	/* B2 */ OP_VOID(or_d),
+	/* B3 */ OP_VOID(or_e),
+	/* B4 */ OP_VOID(or_h),
+	/* B5 */ OP_VOID(or_l),
+	/* B6 */ OP_VOID(or_hlp),
+	/* B7 */ OP_VOID(or_a),
+	/* B8 */ OP_VOID(cp_b),
+	/* B9 */ OP_VOID(cp_c),
+	/* BA */ OP_VOID(cp_d),
+	/* BB */ OP_VOID(cp_e),
+	/* BC */ OP_VOID(cp_h),
+	/* BD */ OP_VOID(cp_l),
+	/* BE */ OP_VOID(cp_hlp),
+	/* BF */ OP_VOID(cp_a),
+
+	/* C0 */ OP_VOID(ret_nz),
+	/* C1 */ OP_VOID(pop_bc),
+	/* C2 */ OP_WORD(jp_nz_nn),
+	/* C3 */ OP_WORD(jp_nn),
+	/* C4 */ OP_WORD(call_nz_nn),
+	/* C5 */ OP_VOID(push_bc),
+	/* C6 */ OP_BYTE(add_a_n),
+	/* C7 */ OP_VOID(rst_0),
+	/* C8 */ OP_VOID(ret_z),
+	/* C9 */ OP_VOID(ret),
+	/* CA */ OP_WORD(jp_z_nn),
+	/* CB */ OP_BYTE(cb_ext),
+	/* CC */ OP_WORD(call_z_nn),
+	/* CD */ OP_WORD(call_nn),
+	/* CE */ OP_BYTE(adc_n),
+	/* CF */ OP_VOID(rst_08),
+
+	/* D0 */ OP_VOID(ret_nc),
+	/* D1 */ OP_VOID(pop_de),
+	/* D2 */ OP_WORD(jp_nc_nn),
+	/* D3 */ INVALID_OP,
+	/* D4 */ OP_WORD(call_nc_nn),
+	/* D5 */ OP_VOID(push_de),
+	/* D6 */ OP_BYTE(sub_n),
+	/* D7 */ OP_VOID(rst_10),
+	/* D8 */ OP_WORD(ret_c),
+	/* D9 */ OP_VOID(reti),
+	/* DA */ OP_WORD(jp_c_nn),
+	/* DB */ INVALID_OP,
+	/* DC */ OP_WORD(call_c_nn),
+	/* DD */ INVALID_OP,
+	/* DE */ OP_BYTE(sbc_n),
+	/* DF */ OP_VOID(rst_18),
+
+	/* E0 */ OP_BYTE(ld_ff_n_ap),
+	/* E1 */ OP_VOID(pop_hl),
+	/* E2 */ OP_VOID(ld_ff_c_a),
+	/* E3 */ INVALID_OP,
+	/* E4 */ INVALID_OP,
+	/* E5 */ OP_VOID(push_hl),
+	/* E6 */ OP_BYTE(and_n),
+	/* E7 */ OP_VOID(rst_20),
+	/* E8 */ OP_BYTE(add_sp_n),
+	/* E9 */ OP_VOID(jp_hl),
+	/* EA */ OP_WORD(ld_nnp_a),
+	/* EB */ INVALID_OP,
+	/* EC */ INVALID_OP,
+	/* ED */ INVALID_OP,
+	/* EE */ OP_BYTE(xor_n),
+	/* EF */ OP_VOID(rst_28),
+
+	/* F0 */ OP_VOID(ld_ff_ap_n),
+	/* F1 */ OP_VOID(pop_af),
+	/* F2 */ OP_VOID(ld_a_ff_c),
+	/* F3 */ OP_VOID(di_inst),
+	/* F4 */ INVALID_OP,
+	/* F5 */ OP_VOID(push_af),
+	/* F6 */ OP_VOID(or_n),
+	/* F7 */ OP_VOID(rst_30),
+	/* F8 */ OP_VOID(ld_hl_sp_n),
+	/* F9 */ OP_VOID(ld_sp_hl),
+	/* FA */ OP_VOID(ld_a_nnp),
+	/* FB */ OP_VOID(ei),
+	/* FC */ INVALID_OP,
+	/* FD */ INVALID_OP,
+	/* FE */ OP_VOID(cp_n),
+	/* FF */ OP_VOID(rst_38)
+};
+
+
+const byte_t OPCODE_TICKS[256] = {
+	/* 0x */ 4,  12, 8, 8,  4,  4,  8,  4,  20, 8,  8,  8, 4, 4,  8, 4,
+	/* 1x */ 4,  12, 8, 8,  4,  4,  8,  4,  12, 8,  8,  8, 4, 4,  8, 4,
+	/* 2x */ 0,  12, 8, 8,  4,  4,  8,  4,  0,  8,  8,  8, 4, 4,  8, 4,
+	/* 3x */ 0,  12, 8, 8,  12, 12, 12, 4,  0,  8,  8,  8, 4, 4,  8, 4,
+	/* 4x */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* 5x */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* 6x */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* 7x */ 8,  8,  8, 8,  8,  8,  4,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* 8x */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* 9x */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* Ax */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* Bx */ 4,  4,  4, 4,  4,  4,  8,  4,  4,  4,  4,  4, 4, 4,  8, 4,
+	/* Cx */ 0,  12, 0, 16, 0,  16, 8,  16, 0,  16, 0,  4, 0, 24, 8, 16,
+	/* Dx */ 0,  12, 0, 0,  0,  16, 8,  16, 0,  16, 0,  0, 0, 0,  8, 16,
+	/* Ex */ 12, 12, 8, 0,  0 , 16, 8,  16, 16, 4,  16, 0, 0, 0,  8, 16,
+	/* Fx */ 12, 12, 8, 4,  0,  16, 8,  16, 12, 8,  16, 4, 0, 0,  8, 16
 };
 
