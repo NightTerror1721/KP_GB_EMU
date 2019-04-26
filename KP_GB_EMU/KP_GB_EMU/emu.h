@@ -4,13 +4,25 @@
 #include "cpu.h"
 #include "inputs.h"
 
-struct GBState
+#include <SFML/Graphics.hpp>
+
+class GBEmulator
 {
-	MMU mmu;
-	CPU cpu;
-	Inputs inputs;
+	MMU _mmu;
+	CPU _cpu;
+	Inputs _inputs;
+
+	sf::RenderWindow _window;
+
+public:
+	GBEmulator();
+	~GBEmulator();
+
+	void start(sf::VideoMode videoMode, int wstyle = sf::Style::Default);
 
 	void runStep();
-
 	void reset();
+
+private:
+	void mainLoop();
 };

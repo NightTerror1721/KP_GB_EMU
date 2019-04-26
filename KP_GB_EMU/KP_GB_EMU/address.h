@@ -24,7 +24,7 @@ public:
 	byte_t readByte(const address_t& offset) const;
 	word_t readWord(const address_t& offset) const;
 
-	bool validAddress(const address_t& offset);
+	bool validAddress(const address_t& offset) const;
 
 	virtual void reset() = 0;
 
@@ -34,6 +34,8 @@ protected:
 
 	virtual byte_t _readByte(const address_t& offset) const = 0;
 	virtual word_t _readWord(const address_t& offset) const = 0;
+
+	const address_t adaptOffset(const address_t& offset) const;
 };
 
 class InvalidAddressSide : public AddressSide
@@ -49,4 +51,34 @@ protected:
 	word_t _readWord(const address_t& offset) const { return 0; }
 
 	void reset() {}
+};
+
+class RAM : public AddressSide
+{
+private:
+	byte_t* const _mem;
+	const bool _shadow;
+
+public:
+	RAM(const address_t& offset, const address_t& length);
+	RAM(const address_t& offset, const RAM& base); //shadow ram
+	~RAM();
+
+	void clear();
+
+	void dump(const unsigned int& columns = 0x10);
+
+	void reset();
+
+	byte_t& operator[] (const address_t& offset);
+	const byte_t& operator[] (const address_t& offset) const;
+
+	byte_t* ptr();
+
+protected:
+	virtual void _writeByte(const address_t& offset, const byte_t& value);
+	virtual void _writeWord(const address_t& offset, const word_t& value);
+
+	virtual byte_t _readByte(const address_t& offset) const;
+	virtual word_t _readWord(const address_t& offset) const;
 };

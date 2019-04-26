@@ -23,6 +23,7 @@
     <ClCompile Include="boot_rom.cpp" />
     <ClCompile Include="emu.cpp" />
     <ClCompile Include="extended_opcodes.cpp" />
+    <ClCompile Include="gpu.cpp" />
     <ClCompile Include="interrupts.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mmu.cpp" />
@@ -36,6 +37,7 @@
     <ClInclude Include="debug.h" />
     <ClInclude Include="emu.h" />
     <ClInclude Include="extended_opcodes.h" />
+    <ClInclude Include="gpu.h" />
     <ClInclude Include="interrupts.h" />
     <ClInclude Include="inputs.h" />
     <ClInclude Include="mmu.h" />

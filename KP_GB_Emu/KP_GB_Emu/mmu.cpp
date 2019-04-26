@@ -1,82 +1,18 @@
 #include "mmu.h"
-
-#include <iostream>
-
-
-RAM::RAM(const address_t& offset, const address_t& length) :
-	AddressSide(offset, length),
-	_mem(new byte_t[_length]),
-	_shadow(false)
-{}
-RAM::RAM(const address_t& offset, const RAM& base) :
-	AddressSide(offset, base._length),
-	_mem(base._mem),
-	_shadow(true)
-{}
-
-
-RAM::~RAM()
-{
-	if(!_shadow)
-		delete[] _mem;
-}
-
-void RAM::_writeByte(const address_t& offset, const byte_t& value)
-{
-	_mem[offset] = value;
-}
-
-void RAM::_writeWord(const address_t& offset, const word_t& value)
-{
-	*reinterpret_cast<word_t*>(_mem + offset) = value;
-}
-
-byte_t RAM::_readByte(const address_t& offset) const
-{
-	return _mem[offset];
-}
-
-word_t RAM::_readWord(const address_t& offset) const
-{
-	return *reinterpret_cast<word_t*>(_mem + offset);
-}
-
-void RAM::clear()
-{
-	std::memset(_mem, 0, sizeof(byte_t) * _length);
-}
-
-void RAM::dump(const unsigned int& columns)
-{
-	byte_t* p = _mem;
-
-	std::cout << std::hex;
-	for (address_t i = 0; i < _length; p++, i++)
-	{
-		if (!(i % columns) && i)
-			std::cout << std::endl;
-		std::cout << static_cast<unsigned int>(*p);
-	}
-	std::cout << std::dec << std::endl;
-}
-
-void RAM::reset()
-{
-	if (!_shadow)
-		clear();
-}
-
-
-
+#include "gpu.h"
 
 
 MMU::MMU(const bool& gbc_bios) :
 	_invalidAddress(),
-	_ram(0xC000, static_cast<address_t>(8_kB)),
+	_ram(0xC000, 0x2000),
 	_shadowRam(0xE000, _ram),
+	_hram(0xFF00, 0x7F),
+	_gpu(nullptr),
 	_bios(gbc_bios ? Bios::gbc() : Bios::gb()),
 	_biosMode(true)
 {}
+
+void MMU::setGPU(GPU* const& gpu) { _gpu = gpu; }
 
 void MMU::dumpInternalRam(const unsigned int& columns) { _ram.dump(columns); }
 
@@ -108,7 +44,7 @@ AddressSide& MMU::findSide(const address_t& offset)
 		/* Video RAM */
 		case 0x8000:
 		case 0x9000:
-			break;
+			return _gpu->vram;
 
 		/* switchable RAM bank */
 		case 0xA000:
@@ -125,38 +61,39 @@ AddressSide& MMU::findSide(const address_t& offset)
 		case 0xF000:
 			if (offset < 0xFE00)
 				return _shadowRam;
+			else if (offset < 0xFEA0)
+				return _gpu->oam;
 			else
 			{
 
 			}
-			break;
 			break;
 	}
 
 	return _invalidAddress;
 }
 
-#define SIDE_REF(offset) this->findSide((offset))
-#define CSIDE_REF(offset) const_cast<MMU*>(this)->findSide((offset))
+#define WRITE_SIDE(offset) this->findSide((offset))
+#define READ_SIDE(offset) const_cast<MMU*>(this)->findSide((offset))
 
 void MMU::writeByte(const address_t& offset, const byte_t& value)
 {
-	SIDE_REF(offset).writeByte(offset, value);
+	WRITE_SIDE(offset).writeByte(offset, value);
 }
 
 void MMU::writeWord(const address_t& offset, const word_t& value)
 {
-	SIDE_REF(offset).writeWord(offset, value);
+	WRITE_SIDE(offset).writeWord(offset, value);
 }
 
 byte_t MMU::readByte(const address_t& offset) const
 {
-	return CSIDE_REF(offset).readByte(offset);
+	return READ_SIDE(offset).readByte(offset);
 }
 
 word_t MMU::readWord(const address_t& offset) const
 {
-	return CSIDE_REF(offset).readWord(offset);
+	return READ_SIDE(offset).readWord(offset);
 }
 
 void MMU::reset()

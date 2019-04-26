@@ -17,7 +17,7 @@ int main(int argc, char** argv)
 
 	//mmu.dumpInternalRam();
 
-	GBState state;
+	GBEmulator state;
 
 	/*for (int i = 0; i < 400; i++) {
 		state.runStep();
@@ -26,7 +26,9 @@ int main(int argc, char** argv)
 
 	db_statement(state.cpu.regs.dump())*/
 
-	Bios::gb()->dumpToFile("gb_bios.txt");
+	//Bios::gb()->dumpToFile("gb_bios.txt");
+
+	state.start(sf::VideoMode(640, 480));
 
 	std::system("pause");
 
