@@ -12,54 +12,49 @@ unsigned long long operator "" _MB(unsigned long long value)
 	return value * 0x10000;
 }
 
-AddressSide::AddressSide(const address_t& offset, const address_t& length) :
-	_offset(offset),
-	_length(length)
-{}
-
-void AddressSide::writeByte(const address_t& offset, const byte_t& value)
+bool addr_range(const address_t& min, const address_t& current, const address_t& max)
 {
-	if (offset >= _offset && offset - _offset < _length)
-	{
-		_writeByte(offset - _offset, value);
-	}
+	return min <= current && current <= max;
 }
 
-void AddressSide::writeWord(const address_t& offset, const word_t& value)
+void AddressSide::writeByte(const size_t& offset, const byte_t& value)
 {
-	if (offset >= _offset && (offset + 1) - _offset < _length)
-	{
-		_writeWord(offset - _offset, value);
-	}
+	(*this)[offset] = value;
 }
 
-byte_t AddressSide::readByte(const address_t& offset) const
+void AddressSide::writeWord(const size_t& offset, const word_t& value)
 {
-	return offset >= _offset && offset - _offset < _length
-		? _readByte(offset - _offset)
-		: 0;
+	(*this)[offset].as_word() = value;
 }
 
-word_t AddressSide::readWord(const address_t& offset) const
+byte_t AddressSide::readByte(const size_t& offset) const
 {
-	return offset >= _offset && (offset + 1) - _offset < _length
-		? _readWord(offset - _offset)
-		: 0;
+	return (*this)[offset];
 }
 
-bool AddressSide::validAddress(const address_t& offset) const { return offset >= _offset && offset - _offset < _length; }
-const address_t AddressSide::adaptOffset(const address_t& offset) const { return offset - _offset; }
+word_t AddressSide::readWord(const size_t& offset) const
+{
+	return (*this)[offset].as_word();
+}
+
+void AddressSide::onMmuWrite(const address_t& address, const byte_t& value) {}
+void AddressSide::onMmuWrite(const address_t& address, const word_t& value) {}
+
+ByteAddressAccessor AddressSide::operator* () { return operator[](0); }
+ConstByteAddressAccessor AddressSide::operator* () const { return operator[](0); }
 
 
 
-RAM::RAM(const address_t& offset, const address_t& length) :
-	AddressSide(offset, length),
-	_mem(new byte_t[_length]),
+RAM::RAM(const size_t& size) :
+	AddressSide(),
+	_size(size),
+	_mem(new byte_t[_size]),
 	_shadow(false)
 {}
-RAM::RAM(const address_t& offset, const RAM& base) :
-	AddressSide(offset, base._length),
+RAM::RAM(const RAM& base) :
+	AddressSide(),
 	_mem(base._mem),
+	_size(base._size),
 	_shadow(true)
 {}
 
@@ -70,40 +65,18 @@ RAM::~RAM()
 		delete[] _mem;
 }
 
-void RAM::_writeByte(const address_t& offset, const byte_t& value)
+ByteAddressAccessor RAM::operator[] (const size_t& offset)
 {
-	_mem[offset] = value;
+	return { _mem + offset };
 }
-
-void RAM::_writeWord(const address_t& offset, const word_t& value)
+const ConstByteAddressAccessor RAM::operator[] (const size_t& offset) const
 {
-	*reinterpret_cast<word_t*>(_mem + offset) = value;
+	return { _mem + offset };
 }
-
-byte_t RAM::_readByte(const address_t& offset) const
-{
-	return _mem[offset];
-}
-
-word_t RAM::_readWord(const address_t& offset) const
-{
-	return *reinterpret_cast<word_t*>(_mem + offset);
-}
-
-byte_t& RAM::operator[] (const address_t& offset)
-{
-	return _mem[offset];
-}
-const byte_t& RAM::operator[] (const address_t& offset) const
-{
-	return _mem[offset];
-}
-
-byte_t* RAM::ptr() { return _mem; }
 
 void RAM::clear()
 {
-	std::memset(_mem, 0, sizeof(byte_t) * _length);
+	std::memset(_mem, 0, sizeof(byte_t) * _size);
 }
 
 void RAM::dump(const unsigned int& columns)
@@ -111,7 +84,7 @@ void RAM::dump(const unsigned int& columns)
 	byte_t* p = _mem;
 
 	std::cout << std::hex;
-	for (address_t i = 0; i < _length; p++, i++)
+	for (address_t i = 0; i < _size; p++, i++)
 	{
 		if (!(i % columns) && i)
 			std::cout << std::endl;

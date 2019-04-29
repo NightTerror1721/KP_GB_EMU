@@ -71,3 +71,24 @@ void Interrupts::returnFromInterrupt(MMU* const& mmu, CPU* const& cpu)
 	master = true;
 	cpu->regs.PC = Stack::readWord(mmu, cpu);
 }
+
+
+void InterruptsAddressSide::reset() {}
+
+ByteAddressAccessor InterruptsAddressSide::operator[] (const size_t& offset)
+{
+	return { !offset ? &_int->flags : &_int->enabled };
+}
+
+ConstByteAddressAccessor InterruptsAddressSide::operator[] (const size_t& offset) const
+{
+	return { !offset ? &_int->flags : &_int->enabled };
+}
+
+InterruptsAddressSide::InterruptsAddressSide(Interrupts* const& ints) :
+	_int(ints)
+{}
+
+InterruptsAddressSide::InterruptsAddressSide() :
+	_int(nullptr)
+{}

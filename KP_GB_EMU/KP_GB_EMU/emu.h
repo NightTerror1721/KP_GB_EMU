@@ -2,6 +2,7 @@
 
 #include "mmu.h"
 #include "cpu.h"
+#include "gpu.h"
 #include "inputs.h"
 
 #include <SFML/Graphics.hpp>
@@ -10,6 +11,7 @@ class GBEmulator
 {
 	MMU _mmu;
 	CPU _cpu;
+	GPU _gpu;
 	Inputs _inputs;
 
 	sf::RenderWindow _window;

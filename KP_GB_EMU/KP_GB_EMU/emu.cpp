@@ -5,9 +5,13 @@
 GBEmulator::GBEmulator() :
 	_mmu(),
 	_cpu(),
+	_gpu(),
 	_inputs(),
 	_window()
-{}
+{
+	_mmu.setGPU(&_gpu);
+	_mmu.setInterrupts(&_cpu.ints);
+}
 
 GBEmulator::~GBEmulator()
 {
@@ -67,7 +71,7 @@ void GBEmulator::mainLoop()
 			}
 
 			//_window.clear(sf::Color::Black);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			_window.display();
 		}

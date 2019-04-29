@@ -2,6 +2,8 @@
 
 #include <cinttypes>
 
+#include "address.h"
+
 struct Inputs
 {
 	union
@@ -29,3 +31,34 @@ struct Inputs
 
 	void reset() { all = 0; }
 };
+
+/*enum class Button : uint8_t
+{
+
+};
+
+struct Inputs : public AddressSide
+{
+	union
+	{
+		struct
+		{
+			uint8_t P10 : 1;
+			uint8_t P11 : 1;
+			uint8_t P12 : 1;
+			uint8_t P13 : 1;
+			uint8_t P14 : 1;
+			uint8_t P15 : 1;
+			uint8_t : 2;
+		};
+		uint8_t P1;
+	};
+
+	Inputs();
+
+
+	void reset() override;
+
+	ByteAddressAccessor operator[] (const size_t& offset) override;
+	ConstByteAddressAccessor operator[] (const size_t& offset) const override;
+};*/

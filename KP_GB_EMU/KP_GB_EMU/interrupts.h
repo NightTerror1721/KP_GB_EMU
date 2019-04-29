@@ -2,8 +2,11 @@
 
 #include <cinttypes>
 
+#include "address.h"
+
 class CPU;
 class MMU;
+class InterruptsAddressSide;
 
 #ifndef ENABLED_FLAG
 #define ENABLED_FLAG 1
@@ -55,4 +58,19 @@ public:
 	void joypad(MMU* const& mmu, CPU* const& cpu);
 
 	void returnFromInterrupt(MMU* const& mmu, CPU* const& cpu);
+};
+
+class InterruptsAddressSide : public AddressSide
+{
+private:
+	Interrupts* _int;
+
+public:
+	InterruptsAddressSide(Interrupts* const& ints);
+	InterruptsAddressSide();
+
+	void reset() override;
+
+	ByteAddressAccessor operator[] (const size_t& offset) override;
+	ConstByteAddressAccessor operator[] (const size_t& offset) const override;
 };

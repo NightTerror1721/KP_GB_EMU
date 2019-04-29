@@ -21,12 +21,8 @@ public:
 	static Bios* const gb();
 	static Bios* const gbc();
 
-protected:
-	void _writeByte(const address_t& offset, const byte_t& value);
-	void _writeWord(const address_t& offset, const word_t& value);
-
-	byte_t _readByte(const address_t& offset) const;
-	word_t _readWord(const address_t& offset) const;
+	ByteAddressAccessor operator[] (const size_t& offset) override;
+	ConstByteAddressAccessor operator[] (const size_t& offset) const override;
 
 private:
 	Bios(const bool& gbc);

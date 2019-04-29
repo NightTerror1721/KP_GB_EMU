@@ -31,11 +31,10 @@ private:
 	GPU* const _gpu;
 
 public:
-	VRAM(GPU* const& gpu, const address_t& offset, const address_t& length);
+	VRAM(GPU* const& gpu, const size_t& size);
 
-protected:
-	void _writeByte(const address_t& offset, const byte_t& value);
-	void _writeWord(const address_t& offset, const word_t& value);
+	void onMmuWrite(const address_t& address, const byte_t& value) override;
+	void onMmuWrite(const address_t& address, const word_t& value) override;
 };
 
 union color_t
@@ -104,9 +103,6 @@ public:
 	void updateTile(const address_t& addr, const byte_t& value);
 
 	void renderScanline();
-
-private:
-	void vramCallback(const address_t& offset, const word_t& value);
 
 public:
 	VRAM vram;

@@ -24,6 +24,7 @@
     <ClCompile Include="emu.cpp" />
     <ClCompile Include="extended_opcodes.cpp" />
     <ClCompile Include="gpu.cpp" />
+    <ClCompile Include="inputs.cpp" />
     <ClCompile Include="interrupts.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mmu.cpp" />

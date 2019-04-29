@@ -4,23 +4,21 @@
 #include <SFML/OpenGL.hpp>
 
 
-VRAM::VRAM(GPU* const& gpu, const address_t& offset, const address_t& length) :
-	RAM(offset, length),
+VRAM::VRAM(GPU* const& gpu, const size_t& size) :
+	RAM(size),
 	_gpu(gpu)
 {}
 
-void VRAM::_writeByte(const address_t& offset, const byte_t& value)
+void VRAM::onMmuWrite(const address_t& address, const byte_t& value)
 {
-	__super::_writeByte(offset, value);
-	if (offset < 0x17FF)
-		_gpu->updateTile(offset + _offset, value);
+	if(addr_range(0x8000, address, 0x97FF))
+		_gpu->updateTile(address, value);
 }
 
-void VRAM::_writeWord(const address_t& offset, const word_t& value)
+void VRAM::onMmuWrite(const address_t& address, const word_t& value)
 {
-	__super::_writeWord(offset, value);
-	if (offset < 0x17FF)
-		_gpu->updateTile(offset + _offset, static_cast<byte_t>(value));
+	if (addr_range(0x8000, address, 0x97FF))
+		_gpu->updateTile(address, static_cast<byte_t>(value & 0xFF));
 }
 
 
@@ -47,8 +45,8 @@ GPU::GPU() :
 	_backgroundPalette(),
 	_spritePalette(),
 	_frameBuffer(),
-	vram(this, 0x8000, 0x2000),
-	oam(0xFE00, 0xA0)
+	vram(this, 0x2000),
+	oam(0xA0)
 {}
 
 void GPU::step(CPU* const& cpu)
@@ -160,9 +158,10 @@ void GPU::renderScanline()
 	}
 
 	//if sprites enabled
+	AddressAccessor<sprite_t> s_acc = (*oam).as<sprite_t>();
 	for (int i = 0; i < 40; i++)
 	{
-		sprite_t sprite = reinterpret_cast<sprite_t*>(oam.ptr())[i];
+		sprite_t sprite = s_acc[i];
 
 		int sx = sprite.x;
 		int sy = sprite.y;
@@ -193,10 +192,4 @@ void GPU::renderScanline()
 				
 		}
 	}
-}
-
-void GPU::vramCallback(const address_t& offset, const word_t& value)
-{
-	if (offset < 0x17FF)
-		updateTile(offset + 0x8000, static_cast<byte_t>(value));
 }

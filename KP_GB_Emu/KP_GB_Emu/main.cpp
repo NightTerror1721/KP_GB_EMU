@@ -5,13 +5,6 @@
 
 int main(int argc, char** argv)
 {
-
-	Registers regs;
-	MMU mmu;
-
-	mmu.writeByte(0xc000, 17);
-	std::cout << static_cast<int>(mmu.readByte(0xc000)) << std::endl;
-
 	std::cout << sizeof(Registers) << std::endl;
 	std::cout << sizeof(Inputs) << std::endl;
 
@@ -30,7 +23,7 @@ int main(int argc, char** argv)
 
 	state.start(sf::VideoMode(640, 480));
 
-	std::system("pause");
+	//std::system("pause");
 
 	return 0;
 }

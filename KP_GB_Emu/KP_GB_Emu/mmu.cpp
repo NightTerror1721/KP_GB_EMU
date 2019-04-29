@@ -1,22 +1,26 @@
 #include "mmu.h"
 #include "gpu.h"
+#include "interrupts.h"
 
 
 MMU::MMU(const bool& gbc_bios) :
 	_invalidAddress(),
-	_ram(0xC000, 0x2000),
-	_shadowRam(0xE000, _ram),
-	_hram(0xFF00, 0x7F),
+	_ram(0x2000),
+	_shadowRam(_ram),
+	_hram(0x7F),
 	_gpu(nullptr),
+	_int(),
 	_bios(gbc_bios ? Bios::gbc() : Bios::gb()),
 	_biosMode(true)
 {}
 
 void MMU::setGPU(GPU* const& gpu) { _gpu = gpu; }
 
+void MMU::setInterrupts(Interrupts* const& ints) { _int = { ints }; }
+
 void MMU::dumpInternalRam(const unsigned int& columns) { _ram.dump(columns); }
 
-AddressSide& MMU::findSide(const address_t& offset)
+MMU::Accessor MMU::findSide(const address_t& offset)
 {
 	switch (offset & 0xF000)
 	{
@@ -25,9 +29,9 @@ AddressSide& MMU::findSide(const address_t& offset)
 			if (_biosMode)
 			{
 				if (offset < 0x100)
-					return *_bios;
+					return { *_bios, offset };
 				else if (offset < 0x800 && _bios->isGBC())
-					return *_bios;
+					return { *_bios, offset };
 			}
 		case 0x1000:
 		case 0x2000:
@@ -44,7 +48,7 @@ AddressSide& MMU::findSide(const address_t& offset)
 		/* Video RAM */
 		case 0x8000:
 		case 0x9000:
-			return _gpu->vram;
+			return { _gpu->vram, offset - 0x8000 };
 
 		/* switchable RAM bank */
 		case 0xA000:
@@ -54,23 +58,22 @@ AddressSide& MMU::findSide(const address_t& offset)
 		/* Internal RAM */
 		case 0xC000:
 		case 0xD000:
-			return _ram;
+			return { _ram, offset - 0xC000 };
 
 		/* Echo of Internal RAM (0xE000 to 0xFDFF) */
 		case 0xE000:
 		case 0xF000:
 			if (offset < 0xFE00)
-				return _shadowRam;
+				return { _shadowRam, offset - 0xE000 };
 			else if (offset < 0xFEA0)
-				return _gpu->oam;
-			else
-			{
+				return { _gpu->oam, offset - 0xFE00 };
+			else if (offset < 0xFF80);
 
-			}
+			else return { _int, 1 };
 			break;
 	}
 
-	return _invalidAddress;
+	return { _invalidAddress, 0 };
 }
 
 #define WRITE_SIDE(offset) this->findSide((offset))
@@ -78,22 +81,26 @@ AddressSide& MMU::findSide(const address_t& offset)
 
 void MMU::writeByte(const address_t& offset, const byte_t& value)
 {
-	WRITE_SIDE(offset).writeByte(offset, value);
+	MMU::Accessor accessor = WRITE_SIDE(offset);
+	accessor.data = value;
+	accessor.location.onMmuWrite(offset, value);
 }
 
 void MMU::writeWord(const address_t& offset, const word_t& value)
 {
-	WRITE_SIDE(offset).writeWord(offset, value);
+	MMU::Accessor accessor = WRITE_SIDE(offset);
+	accessor.data.as_word() = value;
+	accessor.location.onMmuWrite(offset, value);
 }
 
 byte_t MMU::readByte(const address_t& offset) const
 {
-	return READ_SIDE(offset).readByte(offset);
+	return READ_SIDE(offset).data;
 }
 
 word_t MMU::readWord(const address_t& offset) const
 {
-	return READ_SIDE(offset).readWord(offset);
+	return READ_SIDE(offset).data.as_word();
 }
 
 void MMU::reset()
@@ -134,3 +141,14 @@ void MMU::reset()
 	writeByte(0xFFFF, 0x00);
 }
 
+
+
+MMU::Accessor::Accessor(AddressSide& location, const address_t& address) :
+	location(location),
+	data(location[address])
+{}
+
+MMU::Accessor::Accessor(AddressSide& location, const int& address) :
+	location(location),
+	data(location[static_cast<address_t>(address & 0xFFFF)])
+{}
