@@ -43,6 +43,7 @@
     <ClInclude Include="inputs.h" />
     <ClInclude Include="mmu.h" />
     <ClInclude Include="cpu.h" />
+    <ClInclude Include="raw_memory.h" />
     <ClInclude Include="registers.h" />
     <ClInclude Include="stack_ops.h" />
   </ItemGroup>

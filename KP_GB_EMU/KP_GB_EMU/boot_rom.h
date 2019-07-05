@@ -3,7 +3,7 @@
 #include "address.h"
 
 
-class Bios : public AddressSide
+class Bios : public AddressSide<>
 {
 private:
 	const byte_t* const _rom;
@@ -21,8 +21,8 @@ public:
 	static Bios* const gb();
 	static Bios* const gbc();
 
-	ByteAddressAccessor operator[] (const size_t& offset) override;
-	ConstByteAddressAccessor operator[] (const size_t& offset) const override;
+	allocator_t operator[] (const size_t& offset) override;
+	const_allocator_t operator[] (const size_t& offset) const override;
 
 private:
 	Bios(const bool& gbc);

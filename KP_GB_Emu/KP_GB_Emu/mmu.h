@@ -43,7 +43,7 @@ public:
 private:
 	struct Accessor
 	{
-		ByteAddressAccessor data;
+		ReadWriteAllocator data;
 		AddressSide& location;
 
 		Accessor(AddressSide& location, const address_t& address);

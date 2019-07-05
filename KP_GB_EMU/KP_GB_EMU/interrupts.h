@@ -60,7 +60,7 @@ public:
 	void returnFromInterrupt(MMU* const& mmu, CPU* const& cpu);
 };
 
-class InterruptsAddressSide : public AddressSide
+class InterruptsAddressSide : public AddressSide<>
 {
 private:
 	Interrupts* _int;
@@ -71,6 +71,6 @@ public:
 
 	void reset() override;
 
-	ByteAddressAccessor operator[] (const size_t& offset) override;
-	ConstByteAddressAccessor operator[] (const size_t& offset) const override;
+	allocator_t operator[] (const size_t& offset) override;
+	const_allocator_t operator[] (const size_t& offset) const override;
 };
